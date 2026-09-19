@@ -4,34 +4,35 @@
  * returns the sponsor segments to skip.
  *
  * Listens on 127.0.0.1 only (default port 4790). Zero npm dependencies; needs
- * yt-dlp (`python -m pip install --user yt-dlp`) for captions and the Claude
- * Code CLI for the agent. The agent is Claude Haiku via `claude -p`, on
- * Simon's own login, with no tools, no MCP servers and none of his hooks.
+ * yt-dlp (`python -m pip install --user yt-dlp`) for captions. Agents
+ * (agents.mjs): Claude through the Claude Code CLI on Simon's subscription,
+ * and the local GPU model through Ollama. No API keys. Claude reads first by
+ * default; `?reader=local` puts the GPU first (see readWithAgents for why
+ * that isn't the default).
  * Results are cached per video in ./cache, so a rewatch costs nothing.
  *
- *   GET /health
+ *   GET /health             which agents can run right now
  *   GET /quick/:videoId     instant: the cached result, else SponsorBlock's
  *                           community segments (hash-prefix lookup), marked
  *                           interim, so an early sponsor read is covered
  *                           while the agent works
- *   GET /analyze/:videoId   the agent's result (cached, or computed now,
- *                           ~5-40 s). No English captions → SponsorBlock.
- *   GET /sponsorskip.user.js  the userscript, for one-click install
+ *   GET /analyze/:videoId   the agent's result (cached, or computed now).
+ *                           ?reader=claude|local  ?fresh=1 ignores the cache.
+ *                           No English captions → SponsorBlock.
  */
-import { spawn } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildPrompt, parseSegments, snapStarts, SYSTEM_PROMPT } from "./segments.mjs";
+import { AGENTS, claudeAvailable, localBlocker, readClaude, readLocal } from "./agents.mjs";
+import { parseSegments, snapStarts } from "./segments.mjs";
 import { getTranscript } from "./youtube.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "..");
 const PORT = Number(process.env.SPONSORSKIP_PORT) || 4790;
 const CACHE = path.join(root, "cache");
-const MODEL = process.env.SPONSORSKIP_MODEL || "haiku";
 const VIDEO_ID = /^[\w-]{11}$/;
 fs.mkdirSync(CACHE, { recursive: true });
 
@@ -42,45 +43,6 @@ function readCache(id) {
   } catch {
     return null;
   }
-}
-
-/** One agent call: the transcript in, raw text out. */
-function runClaude(prompt) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(
-      "claude",
-      [
-        "-p",
-        "--model", MODEL,
-        "--tools", "",
-        "--strict-mcp-config",
-        "--no-session-persistence",
-        "--setting-sources", "project",
-        "--output-format", "json",
-        "--system-prompt", SYSTEM_PROMPT,
-      ],
-      // No shell: claude is a native .exe, and a shell would have to re-quote
-      // the multi-line system prompt.
-      { cwd: root, windowsHide: true },
-    );
-    let out = "";
-    let err = "";
-    const timer = setTimeout(() => child.kill(), 180_000);
-    child.stdout.on("data", (d) => (out += d));
-    child.stderr.on("data", (d) => (err += d));
-    child.on("error", reject);
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      try {
-        const json = JSON.parse(out);
-        if (json.is_error) return reject(new Error(`claude: ${json.result ?? "error"}`));
-        resolve({ text: json.result ?? "", costUsd: json.total_cost_usd ?? null });
-      } catch {
-        reject(new Error(`claude exited ${code}: ${(err || out).slice(0, 300)}`));
-      }
-    });
-    child.stdin.end(prompt);
-  });
 }
 
 async function sponsorBlock(id) {
@@ -96,8 +58,8 @@ async function sponsorBlock(id) {
 }
 
 const inFlight = new Map();
-function analyze(id) {
-  const cached = readCache(id);
+function analyze(id, { reader = "claude", fresh = false } = {}) {
+  const cached = fresh ? null : readCache(id);
   if (cached) return Promise.resolve(cached);
   if (inFlight.has(id)) return inFlight.get(id);
   const job = (async () => {
@@ -107,17 +69,7 @@ function analyze(id) {
     if (!video.transcript) {
       result = { videoId: id, title: video.title, segments: await sponsorBlock(id), source: "sponsorblock", reason: "no English captions" };
     } else {
-      const { text, costUsd } = await runClaude(buildPrompt(video));
-      const segments = snapStarts(parseSegments(text, video.lengthSeconds), video.transcript);
-      result = {
-        videoId: id,
-        title: video.title,
-        channel: video.channel,
-        segments,
-        source: `claude-${MODEL}`,
-        transcriptLines: video.transcript.length,
-        costUsd,
-      };
+      result = await readWithAgents(id, video, reader);
     }
     result.analyzedAt = new Date().toISOString();
     result.seconds = Math.round((Date.now() - started) / 1000);
@@ -128,18 +80,104 @@ function analyze(id) {
   return job;
 }
 
+/**
+ * Which agent reads, and in what order. Default "claude": Claude reads; the
+ * local GPU model only if Claude can't run. "local": the GPU reads first, and
+ * Claude re-reads when the local answer disagrees with SponsorBlock.
+ *
+ * Why Claude is the default (measured 2026-09-18 on two Dwarkesh Patel
+ * episodes, 6 sponsor reads between them): Claude Haiku found all 6, with
+ * starts within 1-2 s. qwen3:8b found 2 of 6 whole in ~30k-character parts,
+ * and with ~12k parts it found only the closing call-to-action lines, leaving
+ * 40-60 s of each ad playing. Simon picked Claude-first on that evidence.
+ */
+async function readWithAgents(id, video, reader) {
+  const tried = [];
+  const clean = (text) => snapStarts(parseSegments(text, video.lengthSeconds), video.transcript);
+  const base = { videoId: id, title: video.title, channel: video.channel, transcriptLines: video.transcript.length, reader };
+
+  async function viaLocal() {
+    const blocker = await localBlocker();
+    if (blocker) {
+      tried.push({ agent: AGENTS.local, outcome: `skipped: ${blocker}` });
+      return null;
+    }
+    try {
+      const t0 = Date.now();
+      const { text, parts } = await readLocal(video);
+      const segments = clean(text);
+      tried.push({ agent: AGENTS.local, outcome: `${segments.length} segment(s) from ${parts} part(s)`, seconds: Math.round((Date.now() - t0) / 1000) });
+      return segments;
+    } catch (e) {
+      tried.push({ agent: AGENTS.local, outcome: `failed: ${e.message}` });
+      return null;
+    }
+  }
+  async function viaClaude() {
+    try {
+      const t0 = Date.now();
+      const { text, costUsd } = await readClaude(video, root);
+      const segments = clean(text);
+      tried.push({ agent: AGENTS.claude, outcome: `${segments.length} segment(s)`, seconds: Math.round((Date.now() - t0) / 1000), costUsd });
+      return segments;
+    } catch (e) {
+      tried.push({ agent: AGENTS.claude, outcome: `failed: ${e.message}` });
+      return null;
+    }
+  }
+  // A reading "agrees" with SponsorBlock when every community segment has one of ours within 60 s.
+  const agrees = (ours, community) => community.every((c) => ours.some((s) => Math.abs(s.start - c.start) < 60));
+
+  if (reader === "local") {
+    const local = await viaLocal();
+    if (local) {
+      const community = await sponsorBlock(id).catch(() => []);
+      if (agrees(local, community)) return { ...base, segments: local, source: AGENTS.local, tried };
+      tried.push({ agent: "sponsorblock", outcome: `local missed ${community.filter((c) => !local.some((s) => Math.abs(s.start - c.start) < 60)).length} community segment(s); asking Claude` });
+    }
+    const claude = await viaClaude();
+    if (claude) return { ...base, segments: claude, source: AGENTS.claude, tried };
+    if (local) return { ...base, segments: local, source: AGENTS.local, tried };
+  } else {
+    const claude = await viaClaude();
+    if (claude) return { ...base, segments: claude, source: AGENTS.claude, tried };
+    const local = await viaLocal();
+    if (local) return { ...base, segments: local, source: AGENTS.local, tried };
+  }
+  return { ...base, segments: await sponsorBlock(id).catch(() => []), source: "sponsorblock", reason: "no agent could read it", tried };
+}
+
+// Browser extensions only. Firefox treats an extension's host permissions as
+// opt-in, so its requests can arrive as ordinary cross-origin fetches; this
+// answers them. Web pages get no CORS header, so no site can make the backend
+// spend Claude usage (a page can't forge its Origin).
+const EXTENSION_ORIGIN = /^(chrome-extension|moz-extension|extension):\/\/[\w-]+$/;
 function send(res, status, body, type = "application/json") {
-  res.writeHead(status, { "content-type": type, "cache-control": "no-store" });
+  const headers = { "content-type": type, "cache-control": "no-store" };
+  // The origin rides on res, not a module variable: requests overlap (an
+  // analyze can take a minute), so a shared variable would answer the wrong one.
+  if (res.origin && EXTENSION_ORIGIN.test(res.origin)) {
+    headers["access-control-allow-origin"] = res.origin;
+    headers.vary = "Origin";
+  }
+  res.writeHead(status, headers);
   res.end(type === "application/json" ? JSON.stringify(body) : body);
 }
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://localhost");
+  res.origin = req.headers.origin ?? null;
   try {
     if (req.method !== "GET") return send(res, 405, { error: "GET only" });
-    if (url.pathname === "/health") return send(res, 200, { ok: true, model: MODEL });
-    if (url.pathname === "/sponsorskip.user.js") {
-      return send(res, 200, fs.readFileSync(path.join(root, "userscript", "sponsorskip.user.js"), "utf8"), "text/javascript");
+    if (url.pathname === "/health") {
+      const [blocker, claude] = await Promise.all([localBlocker(), claudeAvailable()]);
+      return send(res, 200, {
+        ok: true,
+        agents: [
+          { name: AGENTS.local, ready: !blocker, note: blocker ?? "ready" },
+          { name: AGENTS.claude, ready: claude, note: claude ? "ready" : "Claude Code CLI not found (install it and log in)" },
+        ],
+      });
     }
     const m = /^\/(quick|analyze)\/([\w-]+)$/.exec(url.pathname);
     if (!m) return send(res, 404, { error: "not found" });
@@ -151,10 +189,11 @@ const server = http.createServer(async (req, res) => {
       const segments = await sponsorBlock(id).catch(() => []);
       return send(res, 200, { videoId: id, segments, source: "sponsorblock", interim: true });
     }
-    return send(res, 200, await analyze(id));
+    const reader = url.searchParams.get("reader") === "local" ? "local" : "claude";
+    return send(res, 200, await analyze(id, { reader, fresh: url.searchParams.get("fresh") === "1" }));
   } catch (error) {
     send(res, 500, { error: error.message });
   }
 });
 
-server.listen(PORT, "127.0.0.1", () => console.log(`SponsorSkip backend on http://127.0.0.1:${PORT} (agent: claude ${MODEL})`));
+server.listen(PORT, "127.0.0.1", () => console.log(`SponsorSkip backend on http://127.0.0.1:${PORT} (readers: ${AGENTS.claude}; ${AGENTS.local})`));

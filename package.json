@@ -1,8 +1,8 @@
 {
   "name": "sponsorskip",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
-  "description": "Skips YouTube sponsor reads: an agent reads the whole transcript to find them.",
+  "description": "Chrome and Firefox extension that skips YouTube sponsor reads: Claude reads the whole transcript through Claude Code.",
   "type": "module",
   "scripts": {
     "start": "node server/server.mjs",

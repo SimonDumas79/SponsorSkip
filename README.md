@@ -1,39 +1,46 @@
 # SponsorSkip
 
-Skips sponsor reads in YouTube videos. **An agent reads the video's entire transcript** to find them, rather than relying on crowd-sourced timestamps.
+A Chrome and Firefox extension that skips sponsor reads in YouTube videos. **Claude reads each video's entire transcript** to find them, on your Claude subscription through Claude Code, with no API key. It doesn't rely on crowd-sourced timestamps.
 
-Built 2026-09-18 for Simon. Personal and local: the backend listens on `127.0.0.1` only.
+Built 2026-09-18 for Simon. Personal and local: the program the extension talks to listens on `127.0.0.1` only.
 
 ## How it works
 
-1. A **userscript** (Violentmonkey, in Firefox) watches the YouTube page. When a video opens, it sends the video id to the backend. That's all it does in the page.
-2. The **backend** (`server/server.mjs`, Node, no npm dependencies):
-   - `GET /quick/:id` answers at once with the cached result, or with [SponsorBlock](https://sponsor.ajay.app)'s community segments marked *interim*, so a sponsor read in the first minute is covered while the agent works. The lookup goes by hash prefix, so SponsorBlock never sees the video id.
-   - `GET /analyze/:id` fetches the English captions with **yt-dlp**, has **Claude Haiku** (`claude -p`, on the local Claude Code login: no tools, no MCP, no hooks) read the whole transcript, and returns the segments. The segment boundaries are then snapped to exact caption lines using the quotes the agent copies for where each read starts and where the show resumes. The result is cached in `cache/<id>.json`, so a rewatch is instant and free. A video with no English captions falls back to SponsorBlock.
-3. The userscript skips any `sponsor` segment the playhead enters, with an **Undo** button. It stays still during YouTube's own ads.
+1. **The extension** (`extension/`, one codebase, Manifest V3, Chrome and Firefox) watches YouTube. When a video opens, it asks the SponsorSkip program on this PC for the sponsor segments, then skips any the playhead enters, with an **Undo** button. It stays still during YouTube's own ads. The popup shows the connection, what was found on the current video, and settings: on/off, reader, and whether to also skip self-promotion. **Settings sync with your browser account.**
+2. **The program** (`server/`, Node, no npm dependencies, `127.0.0.1:4790`):
+   - `GET /quick/:id` answers at once, from the cache or else from [SponsorBlock](https://sponsor.ajay.app)'s community segments marked *interim*, so a sponsor read in the first minute is covered while Claude reads. The SponsorBlock lookup goes by hash prefix, so it never sees the video id.
+   - `GET /analyze/:id` fetches the English captions with **yt-dlp**, and **Claude Haiku** reads the whole transcript through the Claude Code CLI (`claude -p`, no tools, no MCP servers, no hooks). The segment edges are then snapped to exact caption lines using the words Claude copies for where each read starts and where the show resumes. Results are cached in `cache/<id>.json`, so a rewatch is instant and free. A video with no English captions falls back to SponsorBlock.
+   - Only browser extensions get answers (CORS is echoed for `chrome-extension://` and `moz-extension://` origins only), so no web page can make it spend your Claude usage.
 
-**Why not read the transcript in the page?** As of 2026-09-18, YouTube refuses `get_transcript` ("Precondition check failed") and returns empty caption files without a proof-of-origin token, both from scripts and from an automated browser. yt-dlp's maintainers keep up with that.
+**Why Claude signs in through Claude Code rather than in the browser:** Anthropic doesn't offer a Claude sign-in to third-party extensions, and reusing the claude.ai browser session would break the consumer terms. Claude Code is Anthropic's own client and runs on your subscription, so it is the "log in with Claude" here. Do it once per PC.
 
-## Measured (2026-09-18, Dwarkesh Patel episodes)
+**Why the page doesn't fetch the transcript itself:** as of 2026-09-18, YouTube refuses `get_transcript` ("Precondition check failed") and serves empty caption files without a proof-of-origin token, from scripts and even from an automated browser. yt-dlp's maintainers keep up with that.
 
-| Episode | Transcript | Agent time | Cost | Claude vs SponsorBlock |
+## Readers (popup setting)
+
+- **Claude through Claude Code: default.**
+- **Local GPU first** (qwen3:8b via Ollama): the GPU reads, and Claude re-reads whenever the local answer misses a SponsorBlock segment. The model is unloaded right after each video, and it's skipped when the GPU is busy (over 2.5 GB used) or warm (78 °C or more). It isn't the default because it measured far worse (below).
+
+## Measured (2026-09-18, two Dwarkesh Patel episodes, 6 sponsor reads)
+
+| Reader | Found | Edges | Time per episode | Cost |
 |---|---|---|---|---|
-| OpenAI researcher on agent swarms (1h20) | 993 lines | ~40–90 s | ~$0.06–0.09 | same 3 reads; starts within 1 s, ends within 0–4 s |
-| Ajeya Cotra (2h20) | 1,564 lines | 30 s | ~$0.08 | same 3 reads; starts within 1–2 s, ends −6 s to +10 s |
+| Claude Haiku | 6 of 6 | starts within 0–2 s of SponsorBlock; ends within 0–4 s on one episode, −6 to +10 s on the other | 30–90 s | ~$0.06–0.09 of subscription usage |
+| qwen3:8b, ~30k-char parts | 2 of 6 whole | one start 44 s late | 55–91 s of GPU | free |
+| qwen3:8b, ~12k-char parts | 1 of 6 whole | otherwise only the closing call-to-action line, leaving 40–60 s of each ad | 56–103 s of GPU | free |
 
-## Install (once per machine)
+The extension was tested in Firefox 156 on the first episode: it connected, loaded 3 segments, skipped 21:10 → 21:58, Undo returned to 20:55 and stayed, and 39:10 skipped to 40:23.
 
-1. `python -m pip install --user yt-dlp` (keep it current: `--upgrade`, since YouTube keeps changing).
-2. The Claude Code CLI must be installed and logged in (`claude` on PATH).
-3. Start the backend: `npm start`, or double-click `start-hidden.vbs` (no window). The desktop has a Startup-folder shortcut to `start-hidden.vbs`, so it runs at login.
-4. In Firefox, install the **Violentmonkey** add-on, then open <http://127.0.0.1:4790/sponsorskip.user.js> and click **Install**.
+## Install (once per PC)
 
-## Settings
-
-- Also skip merch and Patreon plugs: add `"selfpromo"` to `SKIP` at the top of the userscript.
-- Agent model: `SPONSORSKIP_MODEL=sonnet` (default `haiku`). Port: `SPONSORSKIP_PORT` (default 4790; change the userscript's `API` too).
-- Re-analyse a video: delete `cache/<id>.json`.
+1. **Claude Code**, installed and logged in with your Claude account (run `claude` once).
+2. **yt-dlp**: `python -m pip install --user yt-dlp`. Keep it current with `--upgrade`, since YouTube keeps changing.
+3. **The program**: double-click `start-hidden.vbs` (no window), or `npm start`. To start it at login, put a shortcut to `start-hidden.vbs` in `shell:startup` (the desktop already has one).
+4. **The extension**:
+   - **Chrome**: `chrome://extensions` → turn on **Developer mode** → **Load unpacked** → pick the `extension` folder.
+   - **Firefox**: `about:debugging#/runtime/this-firefox` → **Load Temporary Add-on** → pick `extension/manifest.json`. This lasts until Firefox restarts. A permanent install needs the add-on signed by Mozilla (free, unlisted): `npx web-ext sign --channel=unlisted` with your addons.mozilla.org API keys.
+   - Firefox may ask to allow the extension on youtube.com and 127.0.0.1. Allow both.
 
 ## Tests
 
-`npm test`: offline checks of the parts that decide what gets skipped (reply parsing, clamping and merging, chunking, quote snapping, caption parsing).
+`npm test`: 11 offline checks of what decides a skip (reply parsing, clamping and merging, chunking, quote snapping at both edges, caption parsing, part splitting for the local reader).

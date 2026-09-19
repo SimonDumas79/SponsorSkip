@@ -1,0 +1,187 @@
+/**
+ * The two agents that can read a transcript (the order is chosen in
+ * server.mjs, readWithAgents: Claude first by default):
+ *
+ *   claude: Claude Haiku through the Claude Code CLI (`claude -p`), on
+ *           Simon's subscription. No API key, no tools, no MCP servers, no hooks.
+ *   local:  qwen3:8b on Simon's GPU through Ollama. Free, but measured well
+ *           below Claude on this task (2 of 6 reads found). The transcript is
+ *           read in parts that fit its 16k context, the model is unloaded as
+ *           soon as the video is done, it's skipped when the GPU is busy or
+ *           warm, and it's abandoned mid-run if the GPU gets hot.
+ */
+import { execFile, spawn } from "node:child_process";
+import { SYSTEM_PROMPT, buildPrompt, extractJson } from "./segments.mjs";
+
+const OLLAMA = (process.env.OLLAMA_URL || "http://localhost:11434").replace(/\/+$/, "");
+const LOCAL_MODEL = process.env.SPONSORSKIP_LOCAL_MODEL || "qwen3:8b";
+const CLAUDE_MODEL = process.env.SPONSORSKIP_MODEL || "haiku";
+const CHUNK_CHARS = Number(process.env.SPONSORSKIP_CHUNK_CHARS) || 30_000; // ~8k tokens per part, leaving room in a 16k context for thinking and the answer
+const OVERLAP_S = 120; // parts overlap so a read that straddles a cut is seen whole at least once
+const GPU_BUSY_MIB = 2500;
+const GPU_WARM_C = 78;
+const GPU_ABORT_C = 83;
+
+// JSON schema Ollama constrains the answer to (the thinking stays free-form).
+const SCHEMA = {
+  type: "object",
+  properties: {
+    segments: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          start: { type: "number" },
+          end: { type: "number" },
+          category: { type: "string", enum: ["sponsor", "selfpromo"] },
+          quote: { type: "string" },
+          resume_quote: { type: "string" },
+          confidence: { type: "number" },
+        },
+        required: ["start", "end", "category", "quote"],
+      },
+    },
+  },
+  required: ["segments"],
+};
+
+function execText(cmd, args, timeout = 10_000) {
+  return new Promise((resolve) => execFile(cmd, args, { timeout, windowsHide: true }, (e, out) => resolve(e ? null : String(out).trim())));
+}
+
+export async function gpuState() {
+  const out = await execText("nvidia-smi", ["--query-gpu=memory.used,utilization.gpu,temperature.gpu", "--format=csv,noheader,nounits"]);
+  if (!out) return null;
+  const [memMiB, util, tempC] = out.split("\n")[0].split(",").map((x) => Number(x.trim()));
+  return { memMiB, util, tempC };
+}
+
+/** Why the local agent shouldn't run right now, or null if it can. */
+export async function localBlocker() {
+  let tags;
+  try {
+    tags = await (await fetch(`${OLLAMA}/api/tags`, { signal: AbortSignal.timeout(3000) })).json();
+  } catch {
+    return "Ollama is not running";
+  }
+  if (!(tags.models ?? []).some((m) => m.name === LOCAL_MODEL)) return `${LOCAL_MODEL} is not installed in Ollama`;
+  const g = await gpuState();
+  if (g && g.memMiB > GPU_BUSY_MIB) return `the GPU is in use (${g.memMiB} MiB)`;
+  if (g && g.tempC >= GPU_WARM_C) return `the GPU is warm (${g.tempC} °C)`;
+  return null;
+}
+
+/** Split a transcript into overlapping parts of at most ~CHUNK_CHARS of text. */
+export function chunkTranscript(transcript, maxChars = CHUNK_CHARS, overlapS = OVERLAP_S) {
+  const parts = [];
+  let i = 0;
+  while (i < transcript.length) {
+    let chars = 0;
+    let j = i;
+    while (j < transcript.length && (chars < maxChars || j === i)) chars += transcript[j++].text.length + 8;
+    parts.push(transcript.slice(i, j));
+    if (j >= transcript.length) break;
+    // Step back so the next part starts OVERLAP_S before this one ended.
+    const cut = transcript[j - 1].start - overlapS;
+    let k = j - 1;
+    while (k > i + 1 && transcript[k - 1].start > cut) k--;
+    i = Math.max(i + 1, k);
+  }
+  return parts;
+}
+
+async function unload() {
+  await fetch(`${OLLAMA}/api/generate`, { method: "POST", body: JSON.stringify({ model: LOCAL_MODEL, keep_alive: 0 }), signal: AbortSignal.timeout(15_000) }).catch(() => {});
+}
+
+/** Local agent: reads each part, returns every raw segment it found (unvalidated). */
+export async function readLocal(video) {
+  const parts = chunkTranscript(video.transcript);
+  const found = [];
+  let hot = null;
+  const watch = setInterval(async () => {
+    const g = await gpuState();
+    if (g && g.tempC >= GPU_ABORT_C) hot = `the GPU reached ${g.tempC} °C`;
+  }, 3000);
+  try {
+    for (const [n, part] of parts.entries()) {
+      if (hot) throw new Error(hot);
+      const header =
+        parts.length > 1
+          ? `\n(This is part ${n + 1} of ${parts.length} of the transcript, from [${Math.round(part[0].start)}] to [${Math.round(part.at(-1).start)}]. Report only segments that start in this part.)`
+          : "";
+      const r = await fetch(`${OLLAMA}/api/chat`, {
+        method: "POST",
+        body: JSON.stringify({
+          model: LOCAL_MODEL,
+          stream: false,
+          think: true,
+          format: SCHEMA,
+          // Stay loaded between parts of this video only; unloaded explicitly below.
+          keep_alive: "30s",
+          options: { num_ctx: 16384, temperature: 0 },
+          messages: [
+            { role: "system", content: SYSTEM_PROMPT },
+            { role: "user", content: buildPrompt({ ...video, transcript: part }) + header },
+          ],
+        }),
+        signal: AbortSignal.timeout(240_000),
+      });
+      if (!r.ok) throw new Error(`Ollama ${r.status}`);
+      const json = await r.json();
+      const parsed = extractJson(json.message?.content ?? "");
+      if (!parsed || !Array.isArray(parsed.segments)) throw new Error(`unusable answer on part ${n + 1}`);
+      found.push(...parsed.segments);
+    }
+  } finally {
+    clearInterval(watch);
+    await unload();
+  }
+  return { text: JSON.stringify({ segments: found }), parts: parts.length };
+}
+
+/** Claude agent via the Claude Code CLI, on Simon's subscription. */
+export function readClaude(video, cwd) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      "claude",
+      [
+        "-p",
+        "--model", CLAUDE_MODEL,
+        "--tools", "",
+        "--strict-mcp-config",
+        "--no-session-persistence",
+        "--setting-sources", "project",
+        "--output-format", "json",
+        "--system-prompt", SYSTEM_PROMPT,
+      ],
+      // No shell: claude is a native .exe, and a shell would have to re-quote
+      // the multi-line system prompt.
+      { cwd, windowsHide: true },
+    );
+    let out = "";
+    let err = "";
+    const timer = setTimeout(() => child.kill(), 180_000);
+    child.stdout.on("data", (d) => (out += d));
+    child.stderr.on("data", (d) => (err += d));
+    child.on("error", (e) => reject(new Error(`Claude Code CLI not available: ${e.message}`)));
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      try {
+        const json = JSON.parse(out);
+        if (json.is_error) return reject(new Error(`claude: ${json.result ?? "error"}`));
+        resolve({ text: json.result ?? "", costUsd: json.total_cost_usd ?? null });
+      } catch {
+        reject(new Error(`claude exited ${code}: ${(err || out).slice(0, 300)}`));
+      }
+    });
+    child.stdin.end(buildPrompt(video));
+  });
+}
+
+export const AGENTS = { local: `${LOCAL_MODEL} (local GPU)`, claude: `claude-${CLAUDE_MODEL} (Claude Code)` };
+
+/** Is the Claude Code CLI on this PC? (Cheap: no model call.) */
+export async function claudeAvailable() {
+  return (await execText("claude", ["--version"], 15_000)) !== null;
+}

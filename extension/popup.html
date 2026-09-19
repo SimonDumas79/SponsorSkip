@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>SponsorSkip</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <header>
+    <img src="icons/32.png" alt="" width="20" height="20" />
+    <h1>SponsorSkip</h1>
+    <label class="switch" title="On or off everywhere"><input type="checkbox" id="enabled" /><span></span></label>
+  </header>
+
+  <section id="connection" class="card">
+    <div class="row"><span class="dot" id="conn-dot"></span><strong id="conn-title">Checking this PC…</strong></div>
+    <p id="conn-detail" class="muted"></p>
+    <ol id="setup" hidden>
+      <li>Install <b>Claude Code</b> and log in with your Claude account (run <code>claude</code> once).</li>
+      <li>Install captions support: <code>python -m pip install --user yt-dlp</code></li>
+      <li>Start SponsorSkip: run <code>start-hidden.vbs</code> in the SponsorSkip folder (it also starts at login once set up).</li>
+    </ol>
+  </section>
+
+  <section id="video" class="card" hidden>
+    <div class="row between"><strong>This video</strong><button id="reread" class="link">Read again</button></div>
+    <p id="video-source" class="muted"></p>
+    <ul id="segments"></ul>
+  </section>
+
+  <section class="card">
+    <strong>Reader</strong>
+    <label class="choice"><input type="radio" name="reader" value="claude" /> Claude, through Claude Code <span class="tag">recommended</span></label>
+    <label class="choice"><input type="radio" name="reader" value="local" /> Local GPU first (qwen3), Claude checks it</label>
+    <p class="muted small">Claude found 6 of 6 sponsor reads in testing. The local model found 2 of 6 and uses the GPU while you watch.</p>
+    <label class="choice"><input type="checkbox" id="skipSelfpromo" /> Also skip self-promotion (merch, Patreon)</label>
+  </section>
+
+  <script src="popup.js"></script>
+</body>
+</html>

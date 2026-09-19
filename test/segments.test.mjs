@@ -120,3 +120,18 @@ test("snapStarts also moves the end to where the show resumes", () => {
   );
   assert.deepEqual([s.start, s.end], [100, 136]);
 });
+
+test("chunkTranscript: parts stay under the size, overlap, and cover every line", async () => {
+  const { chunkTranscript } = await import("../server/agents.mjs");
+  const transcript = Array.from({ length: 600 }, (_, i) => ({ start: i * 5, text: "x".repeat(92) })); // ~100 chars/line, 50 min
+  const parts = chunkTranscript(transcript, 10_000, 120);
+  assert.ok(parts.length >= 6, `expected several parts, got ${parts.length}`);
+  for (const p of parts) assert.ok(p.reduce((n, l) => n + l.text.length + 8, 0) <= 10_000 + 100);
+  for (let k = 1; k < parts.length; k++) {
+    const prevEnd = parts[k - 1].at(-1).start;
+    assert.ok(parts[k][0].start <= prevEnd - 100, "each part starts well before the previous one ended");
+  }
+  const covered = new Set(parts.flat().map((l) => l.start));
+  assert.equal(covered.size, transcript.length, "no line is lost");
+  assert.equal(chunkTranscript(transcript.slice(0, 10), 10_000, 120).length, 1, "a short transcript is one part");
+});
