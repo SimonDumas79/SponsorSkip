@@ -1,0 +1,11 @@
+{
+  "name": "sponsorskip",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Skips YouTube sponsor reads: an agent reads the whole transcript to find them.",
+  "type": "module",
+  "scripts": {
+    "start": "node server/server.mjs",
+    "test": "node --test"
+  }
+}
