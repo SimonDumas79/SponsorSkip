@@ -28,6 +28,17 @@
     <ul id="segments"></ul>
   </section>
 
+  <section id="sb" class="card" hidden>
+    <div class="row between"><strong>Help SponsorBlock</strong><button id="sb-toggle" class="link">Review</button></div>
+    <p id="sb-summary" class="muted small"></p>
+    <div id="sb-body" hidden>
+      <p class="muted small">SponsorBlock only accepts segments a person has checked. Preview both edges, nudge them if the cut is off, then submit.</p>
+      <ul id="sb-list"></ul>
+      <p class="muted small"><span id="sb-id-text">Submitting under a private SponsorBlock ID kept in this browser account.</span> <button id="sb-id-change" class="link">Use my own</button></p>
+      <div id="sb-id-edit" hidden class="row"><input id="sb-id-input" placeholder="Paste your SponsorBlock private ID" /><button id="sb-id-save">Save</button></div>
+    </div>
+  </section>
+
   <section class="card">
     <strong>Reader</strong>
     <label class="choice"><input type="radio" name="reader" value="claude" /> Claude, through Claude Code <span class="tag">recommended</span></label>

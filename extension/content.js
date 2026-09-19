@@ -10,6 +10,8 @@
   let result = null; // the latest result for this video, for the popup
   let segments = [];
   const undone = new Set();
+  let previewUntil = 0; // skipping pauses while a SponsorBlock review preview plays
+  let previewTimer = null;
 
   const send = (msg) => api.runtime.sendMessage(msg);
   const categories = () => (settings.skipSelfpromo ? ["sponsor", "selfpromo"] : ["sponsor"]);
@@ -53,7 +55,7 @@
 
   // --- skipping --------------------------------------------------------------
   setInterval(() => {
-    if (!settings.enabled || !segments.length) return;
+    if (!settings.enabled || !segments.length || Date.now() < previewUntil) return;
     const video = document.querySelector("video.html5-main-video") || document.querySelector("video");
     if (!video || document.getElementById("movie_player")?.classList.contains("ad-showing")) return;
     const t = video.currentTime;
@@ -106,10 +108,28 @@
     toast(n ? `SponsorSkip: ${n} to skip (${via})` : `SponsorSkip: nothing to skip (${via})`);
   }
 
-  // The popup asks what this tab knows, or to re-read the video.
+  /**
+   * Review preview for a SponsorBlock submission: play from 2 s before an
+   * edge to 3 s after it, so Simon sees the segue in or out, then pause.
+   * Skipping is suspended meanwhile, or the preview would skip itself.
+   */
+  function preview(at) {
+    const video = document.querySelector("video.html5-main-video") || document.querySelector("video");
+    if (!video) return false;
+    clearTimeout(previewTimer);
+    previewUntil = Date.now() + 5500;
+    video.currentTime = Math.max(0, at - 2);
+    video.play();
+    previewTimer = setTimeout(() => video.pause(), 5000);
+    return true;
+  }
+
+  // The popup asks what this tab knows, to re-read the video, or to preview an edge.
   api.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-    if (msg.type === "state") sendResponse({ videoId, result, segments });
+    const video = document.querySelector("video.html5-main-video") || document.querySelector("video");
+    if (msg.type === "state") sendResponse({ videoId, result, segments, duration: video?.duration || null });
     if (msg.type === "reread" && videoId) load(videoId, { fresh: true });
+    if (msg.type === "preview") sendResponse({ ok: preview(msg.at) });
   });
 
   // YouTube is a single-page app: watch the URL.

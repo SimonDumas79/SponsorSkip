@@ -6,7 +6,7 @@ Built 2026-09-18 for Simon. Personal and local: the program the extension talks 
 
 ## How it works
 
-1. **The extension** (`extension/`, one codebase, Manifest V3, Chrome and Firefox) watches YouTube. When a video opens, it asks the SponsorSkip program on this PC for the sponsor segments, then skips any the playhead enters, with an **Undo** button. It stays still during YouTube's own ads. The popup shows the connection, what was found on the current video, and settings: on/off, reader, and whether to also skip self-promotion. **Settings sync with your browser account.**
+1. **The extension** (`extension/`, one codebase, Manifest V3, Chrome and Firefox) watches YouTube. When a video opens, it asks the SponsorSkip program on this PC for the sponsor segments, then skips any the playhead enters, with an **Undo** button. It stays still during YouTube's own ads. The popup shows the connection, what was found on the current video, settings (on/off, reader, and whether to also skip self-promotion), and the review list for SponsorBlock. **Settings sync with your browser account.**
 2. **The program** (`server/`, Node, no npm dependencies, `127.0.0.1:4790`):
    - `GET /quick/:id` answers at once, from the cache or else from [SponsorBlock](https://sponsor.ajay.app)'s community segments marked *interim*, so a sponsor read in the first minute is covered while Claude reads. The SponsorBlock lookup goes by hash prefix, so it never sees the video id.
    - `GET /analyze/:id` fetches the English captions with **yt-dlp**, and **Claude Haiku** reads the whole transcript through the Claude Code CLI (`claude -p`, no tools, no MCP servers, no hooks). The segment edges are then snapped to exact caption lines using the words Claude copies for where each read starts and where the show resumes. Results are cached in `cache/<id>.json`, so a rewatch is instant and free. A video with no English captions falls back to SponsorBlock.
@@ -15,6 +15,16 @@ Built 2026-09-18 for Simon. Personal and local: the program the extension talks 
 **Why Claude signs in through Claude Code rather than in the browser:** Anthropic doesn't offer a Claude sign-in to third-party extensions, and reusing the claude.ai browser session would break the consumer terms. Claude Code is Anthropic's own client and runs on your subscription, so it is the "log in with Claude" here. Do it once per PC.
 
 **Why the page doesn't fetch the transcript itself:** as of 2026-09-18, YouTube refuses `get_transcript` ("Precondition check failed") and serves empty caption files without a proof-of-origin token, from scripts and even from an automated browser. yt-dlp's maintainers keep up with that.
+
+## Help SponsorBlock (secondary)
+
+When Claude finds a segment SponsorBlock doesn't have, the popup offers it under **Help SponsorBlock** (collapsed by default, since skipping is the point). SponsorBlock bans automated submissions and accepts AI-found timings only after a person previews them ([their rule](https://wiki.sponsor.ajay.app/w/Automating_Submissions)), so:
+
+- each segment has **▶ preview** buttons for both edges (they play from 2 s before to 3 s after the edge, with skipping paused), plus **− / +** nudges of 0.5 s;
+- **Submit stays disabled until both edges have been previewed**, and nudging an edge un-previews it;
+- one click submits one segment. Nothing is ever sent automatically. A submitted segment is remembered, so it can't be sent twice.
+
+Submissions use a private SponsorBlock user ID the extension creates once and keeps in synced browser storage. Use my own in the popup lets you paste an existing SponsorBlock ID so contributions count toward it. The submission format comes from SponsorBlock's server source (`postSkipSegments.ts`): `videoID`, `userID` (at least 30 characters, private), `userAgent`, `videoDuration`, and `segments: [{segment: [start, end], category, actionType: "skip"}]`.
 
 ## Readers (popup setting)
 
