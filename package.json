@@ -1,6 +1,6 @@
 {
   "name": "sponsorskip",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "private": true,
   "description": "Chrome and Firefox extension that skips YouTube sponsor reads: Claude reads the whole transcript through Claude Code.",
   "type": "module",

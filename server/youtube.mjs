@@ -12,6 +12,15 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+/**
+ * The caption tracks to fetch: English as published, the auto-generated
+ * original, and regional English. NOT "en.*": that pattern also matches
+ * YouTube's machine translations into English from every other language
+ * (en-pl, en-it, …). On a channel that publishes in many languages that's
+ * dozens of downloads, and YouTube answered 429 (Kurzgesagt, 2026-09-19).
+ */
+export const SUB_LANGS = "en,en-orig,en-US,en-GB";
+
 /** json3 caption events → [{ start, text }]. Word-level auto captions join per event. */
 export function parseJson3(json) {
   return (json?.events ?? [])
@@ -52,7 +61,7 @@ export async function getTranscript(videoId, { python = process.env.SPONSORSKIP_
       [
         "-m", "yt_dlp",
         "--skip-download", "--no-simulate", "--no-warnings", "--quiet",
-        "--write-subs", "--write-auto-subs", "--sub-langs", "en.*,en", "--sub-format", "json3",
+        "--write-subs", "--write-auto-subs", "--sub-langs", SUB_LANGS, "--sub-format", "json3",
         "--print", "%(title)s\t%(duration)s\t%(channel)s",
         "-o", "%(id)s.%(ext)s",
         `https://www.youtube.com/watch?v=${videoId}`,

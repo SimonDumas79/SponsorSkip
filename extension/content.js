@@ -4,7 +4,7 @@
 (() => {
   "use strict";
   const api = globalThis.browser ?? globalThis.chrome;
-  const DEFAULTS = { enabled: true, skipSelfpromo: false, reader: "claude" };
+  const DEFAULTS = { enabled: true, skipSelfpromo: true, reader: "claude" };
   let settings = { ...DEFAULTS };
   let videoId = null;
   let result = null; // the latest result for this video, for the popup

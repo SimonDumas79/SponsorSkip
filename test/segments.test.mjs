@@ -135,3 +135,10 @@ test("chunkTranscript: parts stay under the size, overlap, and cover every line"
   assert.equal(covered.size, transcript.length, "no line is lost");
   assert.equal(chunkTranscript(transcript.slice(0, 10), 10_000, 120).length, 1, "a short transcript is one part");
 });
+
+test("captions: only real English tracks, never every machine translation into English", async () => {
+  const { SUB_LANGS } = await import("../server/youtube.mjs");
+  const langs = SUB_LANGS.split(",");
+  assert.ok(langs.includes("en") && langs.includes("en-orig"));
+  assert.ok(!langs.some((l) => l.includes("*")), "no wildcard: en.* matched dozens of translated tracks and YouTube answered 429");
+});

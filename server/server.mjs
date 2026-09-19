@@ -64,7 +64,14 @@ function analyze(id, { reader = "claude", fresh = false } = {}) {
   if (inFlight.has(id)) return inFlight.get(id);
   const job = (async () => {
     const started = Date.now();
-    const video = await getTranscript(id);
+    let video;
+    try {
+      video = await getTranscript(id);
+    } catch (e) {
+      // Couldn't fetch captions (rate limit, network, a YouTube change): fall
+      // back to SponsorBlock for now, and DON'T cache, so the next visit retries.
+      return { videoId: id, segments: await sponsorBlock(id).catch(() => []), source: "sponsorblock", reason: `couldn't fetch captions (${String(e.message).slice(0, 120)})`, retryLater: true };
+    }
     let result;
     if (!video.transcript) {
       result = { videoId: id, title: video.title, segments: await sponsorBlock(id), source: "sponsorblock", reason: "no English captions" };

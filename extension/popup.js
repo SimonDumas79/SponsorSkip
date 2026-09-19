@@ -1,5 +1,5 @@
 const api = globalThis.browser ?? globalThis.chrome;
-const DEFAULTS = { enabled: true, skipSelfpromo: false, reader: "claude" };
+const DEFAULTS = { enabled: true, skipSelfpromo: true, reader: "claude" };
 const $ = (id) => document.getElementById(id);
 const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 
