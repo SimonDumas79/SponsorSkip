@@ -11,6 +11,7 @@
  *           warm, and it's abandoned mid-run if the GPU gets hot.
  */
 import { execFile, spawn } from "node:child_process";
+import os from "node:os";
 import { SYSTEM_PROMPT, buildPrompt, extractJson } from "./segments.mjs";
 
 const OLLAMA = (process.env.OLLAMA_URL || "http://localhost:11434").replace(/\/+$/, "");
@@ -56,6 +57,15 @@ export async function gpuState() {
   return { memMiB, util, tempC };
 }
 
+/** Machine-wide CPU busy %, over one second (no pounding the CPU while other things run). */
+async function cpuBusy(sampleMs = 1000) {
+  const snap = () => os.cpus().reduce((a, c) => ((a.idle += c.times.idle), (a.total += c.times.user + c.times.nice + c.times.sys + c.times.idle + c.times.irq), a), { idle: 0, total: 0 });
+  const a = snap();
+  await new Promise((r) => setTimeout(r, sampleMs));
+  const b = snap();
+  return b.total - a.total > 0 ? Math.round(100 * (1 - (b.idle - a.idle) / (b.total - a.total))) : 0;
+}
+
 /** Why the local agent shouldn't run right now, or null if it can. */
 export async function localBlocker() {
   let tags;
@@ -68,6 +78,8 @@ export async function localBlocker() {
   const g = await gpuState();
   if (g && g.memMiB > GPU_BUSY_MIB) return `the GPU is in use (${g.memMiB} MiB)`;
   if (g && g.tempC >= GPU_WARM_C) return `the GPU is warm (${g.tempC} °C)`;
+  const cpu = await cpuBusy();
+  if (cpu > 60) return `the CPU is busy with something else (${cpu}%)`;
   return null;
 }
 
