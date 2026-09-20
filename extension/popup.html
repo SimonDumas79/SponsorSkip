@@ -24,6 +24,8 @@
 
   <section id="video" class="card" hidden>
     <div class="row between"><strong>This video</strong><button id="reread" class="link">Read again</button></div>
+    <div id="steps" class="steps" hidden></div>
+    <p id="verdict" class="verdict" hidden></p>
     <p id="video-source" class="muted"></p>
     <ul id="segments"></ul>
   </section>
@@ -43,8 +45,8 @@
   <section class="card">
     <strong>Reader</strong>
     <label class="choice"><input type="radio" name="reader" value="claude" /> Claude, through Claude Code <span class="tag">recommended</span></label>
-    <label class="choice"><input type="radio" name="reader" value="local" /> Local GPU first (qwen3), Claude checks it</label>
-    <p class="muted small">Claude found 6 of 6 sponsor reads in testing. The local model found 2 of 6 and uses the GPU while you watch.</p>
+    <label class="choice"><input type="radio" name="reader" value="local" /> Local GPU first (qwen3), Claude checks anything unconfirmed</label>
+    <p class="muted small">Claude found 6 of 6 sponsor reads in testing, placing starts within 2 s. The local model found 6 of 6 too, but put half the starts a whole minute late, so Claude re-reads whatever it cannot confirm.</p>
     <label class="choice"><input type="checkbox" id="skipSelfpromo" /> Skip self-promotion too (merch, Patreon, memberships)</label>
   </section>
 

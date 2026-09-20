@@ -3,15 +3,67 @@ const DEFAULTS = { enabled: true, skipSelfpromo: true, reader: "claude" };
 const $ = (id) => document.getElementById(id);
 const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 
+let readerSetting = DEFAULTS.reader;
+
+// The steps a reading goes through, in order, for each reader setting. Each
+// gets its own colour so the strip reads at a glance, and every reading runs
+// visibly to a finish -- so "found nothing" never looks like "it broke".
+const STEP_ORDER = {
+  claude: ["captions", "opening", "full"],
+  local: ["captions", "gpu", "verify", "full"],
+};
+const STEP = {
+  captions: { label: "Fetching captions", color: "#7aa2f7" },
+  opening: { label: "Reading the opening", color: "#7dcfff" },
+  full: { label: "Reading the whole transcript", color: "#9ece6a" },
+  gpu: { label: "Reading on your GPU", color: "#bb9af7" },
+  verify: { label: "Claude checking that answer", color: "#e0af68" },
+};
+
+function renderSteps(reading) {
+  const box = $("steps");
+  if (!reading?.step) {
+    box.hidden = true;
+    box.replaceChildren();
+    return;
+  }
+  const order = STEP_ORDER[readerSetting] ?? STEP_ORDER.claude;
+  const keys = order.includes(reading.step) ? order : [...order, reading.step];
+  const at = keys.indexOf(reading.step);
+  box.hidden = false;
+  box.replaceChildren(
+    ...keys.map((key, i) => {
+      const row = document.createElement("div");
+      row.className = `step ${i < at ? "done" : i === at ? "active" : "todo"}`;
+      row.style.setProperty("--c", STEP[key]?.color ?? "var(--accent)");
+      const track = document.createElement("span");
+      track.className = "track";
+      const fill = document.createElement("span");
+      fill.className = "fill";
+      track.append(fill);
+      const lbl = document.createElement("span");
+      lbl.className = "lbl";
+      lbl.textContent = (key === reading.step && reading.label) || STEP[key]?.label || key;
+      row.append(track, lbl);
+      return row;
+    }),
+  );
+}
+
 async function loadSettings() {
   const s = { ...DEFAULTS, ...(await api.storage.sync.get(DEFAULTS)) };
+  readerSetting = s.reader;
   $("enabled").checked = s.enabled;
   $("skipSelfpromo").checked = s.skipSelfpromo;
   for (const r of document.querySelectorAll('input[name="reader"]')) r.checked = r.value === s.reader;
 }
 $("enabled").addEventListener("change", (e) => api.storage.sync.set({ enabled: e.target.checked }));
 $("skipSelfpromo").addEventListener("change", (e) => api.storage.sync.set({ skipSelfpromo: e.target.checked }));
-for (const r of document.querySelectorAll('input[name="reader"]')) r.addEventListener("change", (e) => api.storage.sync.set({ reader: e.target.value }));
+for (const r of document.querySelectorAll('input[name="reader"]'))
+  r.addEventListener("change", (e) => {
+    readerSetting = e.target.value;
+    api.storage.sync.set({ reader: e.target.value });
+  });
 
 async function connection() {
   const h = await api.runtime.sendMessage({ type: "health" });
@@ -54,6 +106,7 @@ const stateSig = (state) =>
     state?.result?.reason ?? null,
     state?.result?.partial ?? null,
     state?.result?.part ?? null,
+    state?.reading?.step ?? null,
     (state?.result?.segments ?? []).map((s) => [s.start, s.end, s.category]),
   ]);
 
@@ -83,6 +136,16 @@ async function pollVideo() {
 function renderVideo(tab, state) {
   $("video").hidden = false;
   const r = state.result;
+  renderSteps(state.reading);
+  // Say the answer in words. A reading that finds nothing is a RESULT, and
+  // used to be indistinguishable from a reading that failed.
+  const settled = r && !r.error && !r.interim && !r.partial;
+  const found = (r?.segments ?? []).length;
+  $("verdict").hidden = !settled;
+  if (settled) {
+    $("verdict").className = found ? "verdict" : "verdict none";
+    $("verdict").textContent = found ? `${found} to skip in this video` : "No sponsor reads in this video";
+  }
   $("video-source").textContent = !r
     ? "Reading…"
     : r.error

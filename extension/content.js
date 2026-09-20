@@ -8,6 +8,7 @@
   let settings = { ...DEFAULTS };
   let videoId = null;
   let result = null; // the latest result for this video, for the popup
+  let reading = null; // which step a reading is on, for the popup's progress strip
   let segments = [];
   const undone = new Set();
   let previewUntil = 0; // skipping pauses while a SponsorBlock review preview plays
@@ -76,6 +77,7 @@
   async function load(id, { fresh = false } = {}) {
     videoId = id;
     result = null;
+    reading = null;
     segments = [];
     undone.clear();
     if (!fresh) {
@@ -91,6 +93,7 @@
       if (!quick.data.interim) return announce();
     }
     if (settings.enabled) toast(settings.reader === "local" ? "SponsorSkip: reading the transcript on your GPU…" : "SponsorSkip: Claude is reading the transcript…");
+    reading = { step: "captions", label: "Fetching captions", segments: [] };
     const analyzing = send({ type: "analyze", id, reader: settings.reader, fresh });
     // The reader works through the transcript in overlapping parts. Take each
     // part as it lands, so a sponsor read near the start can be skipped while
@@ -99,7 +102,9 @@
     const poll = setInterval(async () => {
       if (videoId !== id) return clearInterval(poll);
       const p = await send({ type: "progress", id });
-      if (videoId !== id || !p.ok || !p.data.partial || !p.data.segments?.length) return;
+      if (videoId !== id || !p.ok || !p.data.partial) return;
+      if (p.data.step) reading = { step: p.data.step, label: p.data.label, segments: p.data.segments ?? [] };
+      if (!p.data.segments?.length) return;
       result = p.data;
       segments = pick(result);
       if (!toldPartial && segments.length && settings.enabled) {
@@ -109,6 +114,7 @@
     }, 2000);
     const full = await analyzing;
     clearInterval(poll);
+    reading = null;
     if (videoId !== id) return;
     if (!full.ok) {
       if (settings.enabled) toast(`SponsorSkip: ${full.error}`);
@@ -146,7 +152,7 @@
   // The popup asks what this tab knows, to re-read the video, or to preview an edge.
   api.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     const video = document.querySelector("video.html5-main-video") || document.querySelector("video");
-    if (msg.type === "state") sendResponse({ videoId, result, segments, duration: video?.duration || null });
+    if (msg.type === "state") sendResponse({ videoId, result, reading, segments, duration: video?.duration || null });
     if (msg.type === "reread" && videoId) load(videoId, { fresh: true });
     if (msg.type === "preview") sendResponse({ ok: preview(msg.at) });
   });
@@ -158,6 +164,7 @@
     if (!id) {
       videoId = null;
       result = null;
+      reading = null;
       segments = [];
       return;
     }

@@ -74,6 +74,21 @@ const inFlight = new Map();
 // /progress answers. Only ever a partial answer; the cache holds the finished
 // one. Dropped as soon as the job settles.
 const partial = new Map();
+
+// Which step a reading is on, for the popup's progress strip. The point is
+// that "found nothing" and "it broke" must never look the same: the steps run
+// to a named end either way.
+const STEPS = {
+  captions: "Fetching captions",
+  opening: "Reading the opening",
+  full: "Reading the whole transcript",
+  gpu: "Reading on your GPU",
+  verify: "Claude checking that answer",
+};
+function stage(id, step, extra = {}) {
+  const was = partial.get(id) ?? { segments: [] };
+  partial.set(id, { ...was, ...extra, step, label: STEPS[step] ?? step });
+}
 function analyze(id, { reader = "claude", fresh = false } = {}) {
   const cached = fresh ? null : readCache(id);
   if (cached) {
@@ -84,6 +99,7 @@ function analyze(id, { reader = "claude", fresh = false } = {}) {
   const job = (async () => {
     const started = Date.now();
     log(id, `reading (reader ${reader}${fresh ? ", fresh" : ""})`);
+    stage(id, "captions");
     let video;
     try {
       video = await getTranscript(id);
@@ -140,6 +156,7 @@ async function readWithAgents(id, video, reader) {
   const base = { videoId: id, title: video.title, channel: video.channel, transcriptLines: video.transcript.length, reader };
 
   async function viaLocal() {
+    stage(id, "gpu");
     const blocker = await localBlocker();
     if (blocker) {
       tried.push({ agent: AGENTS.local, outcome: `skipped: ${blocker}` });
@@ -156,14 +173,15 @@ async function readWithAgents(id, video, reader) {
       return null;
     }
   }
-  async function viaClaude() {
+  async function viaClaude(firstStep = "opening") {
     try {
       const t0 = Date.now();
+      stage(id, firstStep);
       // Each part is published as it lands, so the page can start skipping
       // what has been found while the rest is still being read.
       const { text, costUsd, parts, failed } = await readClaude(video, root, (p) => {
         const soFar = clean(p.text);
-        partial.set(id, { segments: soFar, part: p.part, parts: p.parts, source: AGENTS.claude });
+        stage(id, "full", { segments: soFar, part: p.part, parts: p.parts, source: AGENTS.claude });
         log(id, `part ${p.part}/${p.parts}: ${soFar.length} segment(s) so far`);
       });
       const segments = clean(text);
@@ -184,12 +202,25 @@ async function readWithAgents(id, video, reader) {
 
   if (reader === "local") {
     const local = await viaLocal();
-    if (local) {
+    // The setting promises "Claude checks it", so Claude has to actually
+    // check. It used to be asked only when the local answer DISAGREED with
+    // SponsorBlock -- and `[].every()` is true, so on a video SponsorBlock
+    // doesn't cover, the local answer was accepted unverified. That is exactly
+    // the video this extension exists for. An empty local answer was accepted
+    // the same way, because `[]` is truthy. Both checked for here.
+    if (local && local.length) {
       const community = await sponsorBlock(id).catch(() => []);
-      if (agrees(local, community)) return { ...base, segments: local, source: AGENTS.local, tried };
-      tried.push({ agent: "sponsorblock", outcome: `local missed ${community.filter((c) => !local.some((s) => Math.abs(s.start - c.start) < 60)).length} community segment(s); asking Claude` });
+      if (community.length && agrees(local, community)) return { ...base, segments: local, source: AGENTS.local, tried };
+      tried.push({
+        agent: "sponsorblock",
+        outcome: community.length
+          ? `local missed ${community.filter((c) => !local.some((s) => Math.abs(s.start - c.start) < 60)).length} community segment(s); asking Claude`
+          : "SponsorBlock has nothing to check against; asking Claude",
+      });
+    } else if (local) {
+      tried.push({ agent: "sponsorblock", outcome: "the GPU found nothing, which is unchecked on its own; asking Claude" });
     }
-    const claude = await viaClaude();
+    const claude = await viaClaude("verify");
     if (claude) return { ...base, segments: claude, source: AGENTS.claude, tried };
     if (local) return { ...base, segments: local, source: AGENTS.local, tried };
   } else {

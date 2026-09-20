@@ -20,6 +20,23 @@ ol { margin: 8px 0 0; padding-left: 18px; } li { margin: 4px 0; }
 code { font: 11.5px ui-monospace, Consolas, monospace; background: rgba(127,127,127,.18); padding: 1px 4px; border-radius: 4px; }
 ul#segments { list-style: none; padding: 0; margin: 6px 0 0; }
 ul#segments li { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; border-top: 1px solid rgba(127,127,127,.2); }
+/* The progress strip: one labelled bar per step, each its own colour, so a
+   reading that finds nothing still visibly RUNS to a finish. "Found nothing"
+   and "it broke" must never look the same. */
+.steps { margin: 8px 0 2px; display: flex; flex-direction: column; gap: 5px; }
+.step { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.step .track { flex: none; width: 76px; height: 5px; border-radius: 3px; background: rgba(127,127,127,.25); overflow: hidden; }
+.step .fill { display: block; height: 100%; width: 0; background: var(--c); border-radius: 3px; transition: width .35s ease; }
+.step .lbl { color: var(--muted); }
+.step.done .fill { width: 100%; }
+.step.done .lbl { color: var(--fg); }
+.step.active .fill { width: 100%; animation: pulse 1.1s ease-in-out infinite; }
+.step.active .lbl { color: var(--c); font-weight: 600; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .step.active .fill { animation: none; opacity: .7; } }
+.verdict { margin: 6px 0 0; font-weight: 600; }
+.verdict.none { color: var(--muted); font-weight: 500; }
+
 .choice { display: flex; align-items: center; gap: 6px; margin-top: 6px; cursor: pointer; }
 .tag { font-size: 11px; color: var(--accent); }
 button.link { background: none; border: 0; color: var(--accent); cursor: pointer; font: inherit; padding: 0; }
