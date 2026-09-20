@@ -20,6 +20,11 @@
  *   GET /analyze/:videoId   the agent's result (cached, or computed now).
  *                           ?reader=claude|local  ?fresh=1 ignores the cache.
  *                           No English captions → SponsorBlock.
+ *   GET /progress/:videoId  what the reader has found SO FAR, while /analyze
+ *                           is still running. Claude reads the transcript in
+ *                           overlapping parts, so a sponsor read in the
+ *                           opening minute can be skipped long before the
+ *                           whole video has been read.
  */
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -27,7 +32,7 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { AGENTS, claudeAvailable, localBlocker, readClaude, readLocal } from "./agents.mjs";
-import { parseSegments, snapStarts } from "./segments.mjs";
+import { mergeOverlaps, parseSegments, snapStarts } from "./segments.mjs";
 import { getTranscript } from "./youtube.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -65,6 +70,10 @@ async function sponsorBlock(id) {
 }
 
 const inFlight = new Map();
+// What a reading has found so far, while it is still going: videoId -> what
+// /progress answers. Only ever a partial answer; the cache holds the finished
+// one. Dropped as soon as the job settles.
+const partial = new Map();
 function analyze(id, { reader = "claude", fresh = false } = {}) {
   const cached = fresh ? null : readCache(id);
   if (cached) {
@@ -103,7 +112,10 @@ function analyze(id, { reader = "claude", fresh = false } = {}) {
       log(id, ` tried ${t.agent}: ${t.outcome}`, t.seconds && `(${t.seconds}s)`, t.costUsd && `$${t.costUsd}`);
     }
     return result;
-  })().finally(() => inFlight.delete(id));
+  })().finally(() => {
+    inFlight.delete(id);
+    partial.delete(id);
+  });
   inFlight.set(id, job);
   return job;
 }
@@ -121,7 +133,10 @@ function analyze(id, { reader = "claude", fresh = false } = {}) {
  */
 async function readWithAgents(id, video, reader) {
   const tried = [];
-  const clean = (text) => snapStarts(parseSegments(text, video.lengthSeconds), video.transcript);
+  // Merge again after snapping: snapStarts moves edges onto caption lines, so
+  // two near-identical readings of one sponsor read (the opening pass and the
+  // full read) can end up overlapping only once their edges have been snapped.
+  const clean = (text) => mergeOverlaps(snapStarts(parseSegments(text, video.lengthSeconds), video.transcript));
   const base = { videoId: id, title: video.title, channel: video.channel, transcriptLines: video.transcript.length, reader };
 
   async function viaLocal() {
@@ -144,9 +159,20 @@ async function readWithAgents(id, video, reader) {
   async function viaClaude() {
     try {
       const t0 = Date.now();
-      const { text, costUsd } = await readClaude(video, root);
+      // Each part is published as it lands, so the page can start skipping
+      // what has been found while the rest is still being read.
+      const { text, costUsd, parts, failed } = await readClaude(video, root, (p) => {
+        const soFar = clean(p.text);
+        partial.set(id, { segments: soFar, part: p.part, parts: p.parts, source: AGENTS.claude });
+        log(id, `part ${p.part}/${p.parts}: ${soFar.length} segment(s) so far`);
+      });
       const segments = clean(text);
-      tried.push({ agent: AGENTS.claude, outcome: `${segments.length} segment(s)`, seconds: Math.round((Date.now() - t0) / 1000), costUsd });
+      tried.push({
+        agent: AGENTS.claude,
+        outcome: `${segments.length} segment(s) from ${parts} part(s)${failed ? `; ${failed}` : ""}`,
+        seconds: Math.round((Date.now() - t0) / 1000),
+        costUsd,
+      });
       return segments;
     } catch (e) {
       tried.push({ agent: AGENTS.claude, outcome: `failed: ${e.message}` });
@@ -207,10 +233,21 @@ const server = http.createServer(async (req, res) => {
         ],
       });
     }
-    const m = /^\/(quick|analyze)\/([\w-]+)$/.exec(url.pathname);
+    const m = /^\/(quick|analyze|progress)\/([\w-]+)$/.exec(url.pathname);
     if (!m) return send(res, 404, { error: "not found" });
     const [, route, id] = m;
     if (!VIDEO_ID.test(id)) return send(res, 400, { error: "bad video id" });
+    if (route === "progress") {
+      // Cheap on purpose: a Map lookup or one cached file. The page polls this
+      // every couple of seconds while a reading runs.
+      const p = partial.get(id);
+      if (p) return send(res, 200, { videoId: id, ...p, partial: true, done: false });
+      // Only fall back to the cache when nothing is running: during a ?fresh=1
+      // re-read the cached answer is the very thing being replaced.
+      if (inFlight.has(id)) return send(res, 200, { videoId: id, segments: [], partial: true, done: false, waiting: true });
+      const cached = readCache(id);
+      return send(res, 200, cached ? { ...cached, done: true } : { videoId: id, segments: [], done: false, waiting: true });
+    }
     if (route === "quick") {
       const cached = readCache(id);
       if (cached) return send(res, 200, cached);

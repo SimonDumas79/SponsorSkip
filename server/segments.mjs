@@ -94,7 +94,7 @@ export function parseSegments(text, duration) {
   return mergeOverlaps(clean);
 }
 
-function mergeOverlaps(clean) {
+export function mergeOverlaps(clean) {
   const merged = [];
   for (const s of clean) {
     const last = merged.at(-1);

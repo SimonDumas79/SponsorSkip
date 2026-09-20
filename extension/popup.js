@@ -52,6 +52,8 @@ const stateSig = (state) =>
     state?.result?.source ?? null,
     state?.result?.seconds ?? null,
     state?.result?.reason ?? null,
+    state?.result?.partial ?? null,
+    state?.result?.part ?? null,
     (state?.result?.segments ?? []).map((s) => [s.start, s.end, s.category]),
   ]);
 
@@ -87,7 +89,9 @@ function renderVideo(tab, state) {
       ? r.error
       : r.interim
         ? "Using SponsorBlock while Claude reads…"
-        : `${r.source}${r.seconds ? `, ${r.seconds}s` : ""}${r.reason ? ` (${r.reason})` : ""}`;
+        : r.partial
+          ? `Reading… part ${r.part} of ${r.parts}, ${(r.segments ?? []).length} found so far`
+          : `${r.source}${r.seconds ? `, ${r.seconds}s` : ""}${r.reason ? ` (${r.reason})` : ""}`;
   $("segments").replaceChildren(
     ...(r?.segments ?? []).map((s) => {
       const li = document.createElement("li");
@@ -105,7 +109,9 @@ function renderVideo(tab, state) {
   // Built once per video: rebuilding would reset the previews that SponsorBlock
   // requires before a segment can be submitted. sbBuiltFor is set before the
   // await inside, so overlapping ticks can't build it twice.
-  if (r && !r.error && !r.interim && !/sponsorblock/i.test(r.source || "") && sbBuiltFor !== state.videoId) {
+  // Not while r.partial: a half-read video would offer segments for review
+  // that the rest of the reading may still extend.
+  if (r && !r.error && !r.interim && !r.partial && !/sponsorblock/i.test(r.source || "") && sbBuiltFor !== state.videoId) {
     sbBuiltFor = state.videoId;
     reviewForSponsorBlock(tab, state, r.segments || []);
   }
@@ -144,7 +150,11 @@ async function reviewForSponsorBlock(tab, state, ours) {
     $("sb-toggle").textContent = $("sb-body").hidden ? "Review" : "Hide";
   };
   $("sb-list").replaceChildren(...missing.map((seg) => reviewRow(tab, state, seg, submitted, key)));
-  $("sb-id-change").onclick = () => ($("sb-id-edit").hidden = false);
+  $("sb-id-change").onclick = () => {
+    $("sb-id-edit").hidden = false;
+    $("sb-id-help").hidden = false;
+    $("sb-id-input").focus();
+  };
   $("sb-id-save").onclick = async () => {
     const v = $("sb-id-input").value.trim();
     if (v.length < 30) {
@@ -173,7 +183,7 @@ function reviewRow(tab, state, seg, submitted, key) {
     const row = Object.assign(document.createElement("div"), { className: "edge" });
     const lbl = Object.assign(document.createElement("span"), { className: "lbl", textContent: label });
     const t = Object.assign(document.createElement("span"), { className: "t", textContent: fmt1(edit[which]) });
-    const play = Object.assign(document.createElement("button"), { textContent: "▶ preview", title: "Plays from 2 s before to 3 s after this edge" });
+    const play = Object.assign(document.createElement("button"), { textContent: "▶ preview", title: "Plays 5 s starting exactly at this time" });
     const nudge = (d) => {
       edit[which] = Math.max(0, +(edit[which] + d).toFixed(1));
       t.textContent = fmt1(edit[which]);

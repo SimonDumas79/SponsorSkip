@@ -136,6 +136,37 @@ test("chunkTranscript: parts stay under the size, overlap, and cover every line"
   assert.equal(chunkTranscript(transcript.slice(0, 10), 10_000, 120).length, 1, "a short transcript is one part");
 });
 
+test("a read straddling a cut is still whole in one part (what the overlap is for)", async () => {
+  const { chunkTranscript } = await import("../server/agents.mjs");
+  const transcript = Array.from({ length: 600 }, (_, i) => ({ start: i * 5, text: "x".repeat(92) }));
+  const parts = chunkTranscript(transcript, 10_000, 120);
+  const last = transcript.at(-1).start;
+  assert.ok(parts.length >= 2, "needs several parts to have a cut at all");
+  for (let k = 0; k < parts.length - 1; k++) {
+    const cut = parts[k].at(-1).start;
+    const read = { start: cut - 30, end: cut + 60 }; // 90 s, inside the 120 s overlap
+    if (read.end > last) continue; // the transcript ends before this read would
+    assert.ok(
+      parts.some((p) => p[0].start <= read.start && p.at(-1).start >= read.end),
+      `no single part holds the read across the cut at ${cut}s`,
+    );
+  }
+});
+
+test("the same read found in two overlapping parts merges into one segment", () => {
+  // What reading in parts produces: part 1 sees the read start and get cut
+  // off at the boundary, part 2 sees the whole thing. Both land in one answer.
+  const answer = JSON.stringify({
+    segments: [
+      { start: 600, end: 638, category: "sponsor", quote: "this episode is brought to you by" },
+      { start: 602, end: 690, category: "sponsor", quote: "this episode is brought to you by" },
+    ],
+  });
+  const out = parseSegments(answer, 3600);
+  assert.equal(out.length, 1, "one read, not two");
+  assert.deepEqual([out[0].start, out[0].end], [600, 690]);
+});
+
 test("captions: only real English tracks, never every machine translation into English", async () => {
   const { SUB_LANGS } = await import("../server/youtube.mjs");
   const langs = SUB_LANGS.split(",");

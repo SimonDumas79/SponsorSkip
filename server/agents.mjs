@@ -4,6 +4,8 @@
  *
  *   claude: Claude Haiku through the Claude Code CLI (`claude -p`), on
  *           Simon's subscription. No API key, no tools, no MCP servers, no hooks.
+ *           Reads the opening on its own first, so the start of a video is
+ *           covered within seconds, then reads the whole transcript.
  *   local:  qwen3:8b on Simon's GPU through Ollama. Free, but measured well
  *           below Claude on this task (2 of 6 reads found). The transcript is
  *           read in parts that fit its 16k context, the model is unloaded as
@@ -18,6 +20,10 @@ const OLLAMA = (process.env.OLLAMA_URL || "http://localhost:11434").replace(/\/+
 const LOCAL_MODEL = process.env.SPONSORSKIP_LOCAL_MODEL || "qwen3:8b";
 const CLAUDE_MODEL = process.env.SPONSORSKIP_MODEL || "haiku";
 const CHUNK_CHARS = Number(process.env.SPONSORSKIP_CHUNK_CHARS) || 30_000; // ~8k tokens per part, leaving room in a 16k context for thinking and the answer
+// How much of the opening Claude reads on its own first, so a sponsor read at
+// the start is skippable within seconds. Small on purpose: it is a head start,
+// not the answer (see readClaude).
+const HEAD_SECONDS = Number(process.env.SPONSORSKIP_HEAD_SECONDS) || 420;
 const OVERLAP_S = 120; // parts overlap so a read that straddles a cut is seen whole at least once
 const GPU_BUSY_MIB = 2500;
 const GPU_WARM_C = 78;
@@ -152,8 +158,8 @@ export async function readLocal(video) {
   return { text: JSON.stringify({ segments: found }), parts: parts.length };
 }
 
-/** Claude agent via the Claude Code CLI, on Simon's subscription. */
-export function readClaude(video, cwd) {
+/** One `claude -p` call: the raw answer text and what it cost. */
+function runClaude(prompt, cwd) {
   return new Promise((resolve, reject) => {
     const child = spawn(
       "claude",
@@ -187,8 +193,55 @@ export function readClaude(video, cwd) {
         reject(new Error(`claude exited ${code}: ${(err || out).slice(0, 300)}`));
       }
     });
-    child.stdin.end(buildPrompt(video));
+    child.stdin.end(prompt);
   });
+}
+
+/**
+ * Claude agent via the Claude Code CLI, on Simon's subscription.
+ *
+ * Two passes: a short one over the opening, then the whole transcript.
+ *
+ * The point of the first pass is that a sponsor read in the opening minutes
+ * becomes skippable within seconds, instead of only once the whole video has
+ * been read. It is small, so it comes back quickly, and it is handed straight
+ * to the page through onPart.
+ *
+ * Why not read the whole thing in overlapping parts, which is the obvious way
+ * to do this: it was measured on 2026-09-20, on a 62-minute episode, and it
+ * lost on every count. Four overlapping 24k-character parts took 181 s and
+ * $0.14, and the FIRST part did not land until 110 s -- slower to a first
+ * answer than just reading the whole transcript, which takes 30-90 s and
+ * $0.06-0.09. Each part also only sees its own slice, and the whole-transcript
+ * read is what the 6-of-6 accuracy was measured on.
+ *
+ * So the second pass is the unchanged whole-transcript read, and it is the
+ * answer. It covers everything the first pass covered, so a read straddling
+ * the boundary is always seen whole by it, and nothing depends on stitching
+ * parts together. The opening pass is best-effort: if it fails, it is ignored.
+ */
+export async function readClaude(video, cwd, onPart) {
+  const head = video.transcript.filter((l) => l.start <= HEAD_SECONDS);
+  const useHead = head.length > 0 && head.length < video.transcript.length;
+  let costUsd = 0;
+
+  if (useHead) {
+    try {
+      const note = `
+(This is only the first ${Math.round(HEAD_SECONDS / 60)} minutes of a longer transcript. Report only segments that start within it.)`;
+      const first = await runClaude(buildPrompt({ ...video, transcript: head }) + note, cwd);
+      costUsd += first.costUsd || 0;
+      const parsed = extractJson(first.text);
+      if (parsed && Array.isArray(parsed.segments)) onPart?.({ text: first.text, part: 1, parts: 2 });
+    } catch {
+      // A head start, not the answer. If it fails, the full read still runs.
+    }
+  }
+
+  // The answer. Throwing here is right: the caller falls back to the other reader.
+  const full = await runClaude(buildPrompt(video), cwd);
+  costUsd += full.costUsd || 0;
+  return { text: full.text, costUsd: costUsd || null, parts: useHead ? 2 : 1, failed: null };
 }
 
 export const AGENTS = { local: `${LOCAL_MODEL} (local GPU)`, claude: `claude-${CLAUDE_MODEL} (Claude Code)` };

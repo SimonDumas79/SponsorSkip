@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "SponsorSkip",
-  "version": "0.4.2",
+  "version": "0.5.0",
   "description": "Skips sponsor reads on YouTube. Claude reads each video's whole transcript to find them, through the SponsorSkip program on your PC.",
   "icons": {
     "16": "icons/16.png",

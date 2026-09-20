@@ -89,6 +89,7 @@ api.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     health: () => call("/health", 20_000),
     quick: () => call(`/quick/${msg.id}`, 15_000),
     analyze: () => call(`/analyze/${msg.id}?reader=${msg.reader === "local" ? "local" : "claude"}${msg.fresh ? "&fresh=1" : ""}`, 300_000),
+    progress: () => call(`/progress/${msg.id}`, 10_000),
     sbLookup: () => sbLookup(msg.id),
     sbSubmit: () => sbSubmit(msg),
   }[msg.type];

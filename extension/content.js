@@ -91,7 +91,24 @@
       if (!quick.data.interim) return announce();
     }
     if (settings.enabled) toast(settings.reader === "local" ? "SponsorSkip: reading the transcript on your GPU…" : "SponsorSkip: Claude is reading the transcript…");
-    const full = await send({ type: "analyze", id, reader: settings.reader, fresh });
+    const analyzing = send({ type: "analyze", id, reader: settings.reader, fresh });
+    // The reader works through the transcript in overlapping parts. Take each
+    // part as it lands, so a sponsor read near the start can be skipped while
+    // the rest is still being read, instead of only at the very end.
+    let toldPartial = false;
+    const poll = setInterval(async () => {
+      if (videoId !== id) return clearInterval(poll);
+      const p = await send({ type: "progress", id });
+      if (videoId !== id || !p.ok || !p.data.partial || !p.data.segments?.length) return;
+      result = p.data;
+      segments = pick(result);
+      if (!toldPartial && segments.length && settings.enabled) {
+        toldPartial = true;
+        toast(`SponsorSkip: ${segments.length} to skip so far, still reading…`);
+      }
+    }, 2000);
+    const full = await analyzing;
+    clearInterval(poll);
     if (videoId !== id) return;
     if (!full.ok) {
       if (settings.enabled) toast(`SponsorSkip: ${full.error}`);
@@ -109,16 +126,18 @@
   }
 
   /**
-   * Review preview for a SponsorBlock submission: play from 2 s before an
-   * edge to 3 s after it, so Simon sees the segue in or out, then pause.
-   * Skipping is suspended meanwhile, or the preview would skip itself.
+   * Review preview for a SponsorBlock submission: play 5 s starting exactly at
+   * the edge the row shows, then pause. It starts AT the stated time, not
+   * before it, so what you hear is what that number claims: on a start edge
+   * the sponsor begins on the first word, on an end edge the show resumes on
+   * it. Skipping is suspended meanwhile, or the preview would skip itself.
    */
   function preview(at) {
     const video = document.querySelector("video.html5-main-video") || document.querySelector("video");
     if (!video) return false;
     clearTimeout(previewTimer);
     previewUntil = Date.now() + 5500;
-    video.currentTime = Math.max(0, at - 2);
+    video.currentTime = Math.max(0, at);
     video.play();
     previewTimer = setTimeout(() => video.pause(), 5000);
     return true;

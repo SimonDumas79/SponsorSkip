@@ -6,6 +6,11 @@ header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
 h1 { font-size: 15px; margin: 0; flex: 1; }
 .card { background: var(--card); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
 .row { display: flex; align-items: center; gap: 8px; }
+/* An author `display` beats the UA sheet's [hidden] rule, so a hidden element
+   that also carries a class like .row stays on screen. This keeps `hidden`
+   meaning hidden, whatever else an element is. */
+[hidden] { display: none !important; }
+a { color: var(--accent); }
 .between { justify-content: space-between; }
 .muted { color: var(--muted); margin: 4px 0 0; }
 .small { font-size: 12px; }
