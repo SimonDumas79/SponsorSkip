@@ -9,7 +9,8 @@
  * and the local GPU model through Ollama. No API keys. Claude reads first by
  * default; `?reader=local` puts the GPU first (see readWithAgents for why
  * that isn't the default).
- * Results are cached per video in ./cache, so a rewatch costs nothing.
+ * Results are cached per video in ./cache, so a rewatch costs nothing, and
+ * every reading and every failure is appended to ./backend.log.
  *
  *   GET /health             which agents can run right now
  *   GET /quick/:videoId     instant: the cached result, else SponsorBlock's
@@ -36,6 +37,12 @@ const CACHE = path.join(root, "cache");
 const VIDEO_ID = /^[\w-]{11}$/;
 fs.mkdirSync(CACHE, { recursive: true });
 
+// One timestamped line per reading and per failure, on stdout, which the
+// launcher appends to backend.log. Without it a transient failure (a caption
+// fetch that gets rate-limited, say) vanishes with the popup that showed it,
+// and the next session can only guess at what went wrong.
+const log = (...parts) => console.log([new Date().toISOString(), ...parts.filter(Boolean)].join(" "));
+
 const cachePath = (id) => path.join(CACHE, `${id}.json`);
 function readCache(id) {
   try {
@@ -60,16 +67,21 @@ async function sponsorBlock(id) {
 const inFlight = new Map();
 function analyze(id, { reader = "claude", fresh = false } = {}) {
   const cached = fresh ? null : readCache(id);
-  if (cached) return Promise.resolve(cached);
+  if (cached) {
+    log(id, "cached", `${cached.segments?.length ?? 0} segment(s)`);
+    return Promise.resolve(cached);
+  }
   if (inFlight.has(id)) return inFlight.get(id);
   const job = (async () => {
     const started = Date.now();
+    log(id, `reading (reader ${reader}${fresh ? ", fresh" : ""})`);
     let video;
     try {
       video = await getTranscript(id);
     } catch (e) {
       // Couldn't fetch captions (rate limit, network, a YouTube change): fall
       // back to SponsorBlock for now, and DON'T cache, so the next visit retries.
+      log(id, "FAILED captions:", String(e.message).slice(0, 200), "- serving SponsorBlock, not cached, retries next visit");
       return { videoId: id, segments: await sponsorBlock(id).catch(() => []), source: "sponsorblock", reason: `couldn't fetch captions (${String(e.message).slice(0, 120)})`, retryLater: true };
     }
     let result;
@@ -81,6 +93,15 @@ function analyze(id, { reader = "claude", fresh = false } = {}) {
     result.analyzedAt = new Date().toISOString();
     result.seconds = Math.round((Date.now() - started) / 1000);
     fs.writeFileSync(cachePath(id), JSON.stringify(result, null, 2));
+    log(
+      id,
+      `${result.source} ${result.segments.length} segment(s) in ${result.seconds}s`,
+      result.reason && `- ${result.reason}`,
+      result.channel && `| ${result.channel}: ${String(result.title ?? "").slice(0, 60)}`,
+    );
+    for (const t of result.tried ?? []) {
+      log(id, ` tried ${t.agent}: ${t.outcome}`, t.seconds && `(${t.seconds}s)`, t.costUsd && `$${t.costUsd}`);
+    }
     return result;
   })().finally(() => inFlight.delete(id));
   inFlight.set(id, job);
@@ -199,6 +220,7 @@ const server = http.createServer(async (req, res) => {
     const reader = url.searchParams.get("reader") === "local" ? "local" : "claude";
     return send(res, 200, await analyze(id, { reader, fresh: url.searchParams.get("fresh") === "1" }));
   } catch (error) {
+    log("FAILED", url.pathname, String(error.message).slice(0, 200));
     send(res, 500, { error: error.message });
   }
 });
