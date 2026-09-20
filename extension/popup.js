@@ -29,16 +29,56 @@ async function connection() {
   $("setup").hidden = !!claude?.ready;
 }
 
-async function thisVideo() {
+// The popup is a live view, not a snapshot: a reading usually finishes while
+// it is open, and it should say so without being reopened.
+//
+// Only the tab's own state is polled. It is a message to the content script,
+// which already holds the latest result, so it costs nothing. /health is
+// deliberately NOT polled: it shells out to `claude --version` and samples the
+// GPU and the CPU, so a tick of it every half second would spawn a process a
+// second. The connection line stays a one-shot from when the popup opened.
+const POLL_MS = 500;
+let lastSig = null;
+let sbBuiltFor = null; // the video the Help SponsorBlock rows were built for
+
+// Everything that changes what the panel should say. Redrawing on every tick
+// instead would throw away a half-finished SponsorBlock review: which edges
+// have been previewed, and any nudges, live in the DOM of those rows.
+const stateSig = (state) =>
+  JSON.stringify([
+    state?.videoId ?? null,
+    state?.result?.error ?? null,
+    state?.result?.interim ?? null,
+    state?.result?.source ?? null,
+    state?.result?.seconds ?? null,
+    state?.result?.reason ?? null,
+    (state?.result?.segments ?? []).map((s) => [s.start, s.end, s.category]),
+  ]);
+
+async function pollVideo() {
   const [tab] = await api.tabs.query({ active: true, currentWindow: true });
-  if (!tab?.url?.startsWith("https://www.youtube.com/watch")) return;
-  let state;
-  try {
-    state = await api.tabs.sendMessage(tab.id, { type: "state" });
-  } catch {
-    return; // the page hasn't loaded the script yet
+  let state = null;
+  if (tab?.url?.startsWith("https://www.youtube.com/watch")) {
+    try {
+      state = await api.tabs.sendMessage(tab.id, { type: "state" });
+    } catch {
+      state = null; // the page hasn't loaded the script yet
+    }
   }
-  if (!state?.videoId) return;
+  const sig = stateSig(state);
+  if (sig === lastSig) return;
+  lastSig = sig;
+  if (!state?.videoId) {
+    // Navigated off a watch page, or the script isn't up yet.
+    $("video").hidden = true;
+    $("sb").hidden = true;
+    sbBuiltFor = null;
+    return;
+  }
+  renderVideo(tab, state);
+}
+
+function renderVideo(tab, state) {
   $("video").hidden = false;
   const r = state.result;
   $("video-source").textContent = !r
@@ -62,11 +102,20 @@ async function thisVideo() {
       return li;
     }),
   );
-  if (r && !r.error && !r.interim && !/sponsorblock/i.test(r.source || "")) reviewForSponsorBlock(tab, state, r.segments || []);
+  // Built once per video: rebuilding would reset the previews that SponsorBlock
+  // requires before a segment can be submitted. sbBuiltFor is set before the
+  // await inside, so overlapping ticks can't build it twice.
+  if (r && !r.error && !r.interim && !/sponsorblock/i.test(r.source || "") && sbBuiltFor !== state.videoId) {
+    sbBuiltFor = state.videoId;
+    reviewForSponsorBlock(tab, state, r.segments || []);
+  }
   $("reread").onclick = () => {
     api.tabs.sendMessage(tab.id, { type: "reread" });
     $("video-source").textContent = "Reading again…";
     $("segments").replaceChildren();
+    $("sb").hidden = true;
+    sbBuiltFor = null;
+    lastSig = null; // redraw from whatever the page reports next tick
   };
 }
 
@@ -177,4 +226,5 @@ function reviewRow(tab, state, seg, submitted, key) {
 
 loadSettings();
 connection();
-thisVideo();
+pollVideo();
+setInterval(pollVideo, POLL_MS);
