@@ -39,6 +39,23 @@ Submissions use a private SponsorBlock user ID the extension creates once and ke
 | qwen3:8b, ~30k-char parts | 2 of 6 whole | one start 44 s late | 55–91 s of GPU | free |
 | qwen3:8b, ~12k-char parts | 1 of 6 whole | otherwise only the closing call-to-action line, leaving 40–60 s of each ad | 56–103 s of GPU | free |
 
+## Measured again (2026-09-20, same 6 reads): reading a WINDOW beats reading the whole transcript
+
+Haiku read a 62-minute episode and placed one sponsor read at **1616 s instead of 3616 s** — it quoted the read correctly and mistyped the number, which appears nowhere in the prompt. That would skip a minute of the show and play the sponsor in full. The read sat 93% of the way through an 82,000-character prompt.
+
+So each read was handed over as a **window** instead (90 s before it, 60 s after, 43–51 caption lines), with the answer given as a **line index** rather than a timestamp — which makes an error of that kind structurally impossible. Run it with `node bench/edge-windows.mjs`.
+
+| Reader, on a window | Found | Start error (median / worst) | Starts within 5 s | End error (median) | Per window |
+|---|---|---|---|---|---|
+| Claude Haiku | 6 of 6 | **0.6 s / 2.2 s** | **6 of 6** | 0.4 s | 7 s |
+| qwen3:8b | 6 of 6 | 55.7 s / 69 s | 2 of 6 | 7.8 s | 11 s |
+
+**Claude on a window beats Claude on the whole transcript** (worst start error 2.2 s, against a 33-minute miss), and costs less.
+
+**qwen3:8b is not usable for edges, and the answer format was not the problem.** Its start errors are bimodal — `+63, +5.2, +55.7, +0.6, +69, +2.1` — so it either nails the start or lands a minute late, which is the same closing-call-to-action failure as 09-18. Handing it the ad whole and centred changed nothing, because it doesn't recognise where a read *begins*. Detection it can do; edges it cannot.
+
+The design this points to: a cheap **marker** finds candidate regions (word patterns now, a trained classifier later), and Claude verifies each one in a window, answering with line indices. Start-line accuracy is the metric a trained detector has to beat.
+
 The extension was tested in Firefox 156 on the first episode: it connected, loaded 3 segments, skipped 21:10 → 21:58, Undo returned to 20:55 and stayed, and 39:10 skipped to 40:23.
 
 ## Install (once per PC)
