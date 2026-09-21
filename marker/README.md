@@ -68,7 +68,27 @@ every language-model answer is recorded once and replayed after that.
 | confirm, local GPU | `confirm_check.py` | qwen3 says yes/no per flagged window; every answer recorded to `data/confirm_verdicts*.jsonl` |
 | place edges | `edge_heads.py` | start and resume models trained on `is_start` / `is_resume` |
 | place edges, local GPU | `qwen_edges.py` | qwen3 gives the start line and the resume line, as Claude does in `server/verify.mjs` |
-| choose and grade | `replay.py`, `system_eval.py` | routing rules scored over the recorded answers for free (the Dream-RSI idea); settings chosen by one written rule on CV, graded once on the holdout |
+| choose and grade | `replay.py`, `system_eval.py` | routing rules scored over the recorded answers for free (the Dream-RSI idea); settings chosen by one written rule on CV, graded once per holdout (`--set holdout`, `--set holdout2`) |
+| ship | `predict.py` | the free tier end to end on one caption file (`run`), on stdin for the server (`serve`); `check` proves the live path cuts exactly the evaluator's regions |
+| ship, all data | `build_production.py` | the free tier retrained on all 205 labelled videos: `data/production/free_tier_pooled.pt`, the candidate for the next fresh test |
+
+`data/production/free_tier.pt` is what the server's opt-in `?reader=marker` loads (0.7.0).
+It is the graded system (a copy is kept as `free_tier_graded.pt`); replace it with the
+pooled bundle only after that passes a fresh test.
+
+**Measured, 2026-09-21** (share of ad time skipped / real show lost per video):
+
+| | holdout 1 (78 videos) | holdout 2 (50 videos) |
+|---|---|---|
+| cue patterns | 28.0% / 19.3 s | 30.5% / 14.4 s |
+| marker alone | 31.5% / 8.3 s | 35.0% / 8.3 s |
+| free tier (context model + edge heads) | 49.6% / 9.9 s | 49.3% / 7.5 s |
+| qwen tier (judge + qwen confirm + qwen edges) | 63.4% / 19.9 s | 63.4% / 9.9 s |
+
+Open problems, in order: reads under 30 s (the free tier skips 13-28% of them, the
+marker alone 17%); one outlier video per set losing 130-170 s (garbled translated
+captions; a video *about* ads); and the worst-video rule, which must be a share of
+videos (as in `build_production.py`), not a maximum, once sets grow.
 
 **Grade on ad TIME, not just reads.** Region recall counts a read as found if one
 line of it is skipped, so a policy that skips a tight core looks excellent while
