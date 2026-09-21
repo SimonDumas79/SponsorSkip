@@ -81,6 +81,7 @@ def fit_stage2(F: np.ndarray, y: np.ndarray, hidden: int, seed: int = 0, epochs:
     def predict(G: np.ndarray) -> np.ndarray:
         with torch.no_grad():
             return torch.sigmoid(model(torch.from_numpy((G - mean) / std).float()).squeeze(1)).numpy()
+    predict.model, predict.mean, predict.std, predict.hidden = model, mean, std, hidden   # for saving (predict.py)
     return predict
 
 
