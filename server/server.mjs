@@ -31,7 +31,7 @@ import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { AGENTS, claudeAvailable, localBlocker, readClaude, readLocal } from "./agents.mjs";
+import { AGENTS, claudeAvailable, localBlocker, readClaude, readLocal, readMarker } from "./agents.mjs";
 import { mergeOverlaps, parseSegments, snapStarts } from "./segments.mjs";
 import { getTranscript } from "./youtube.mjs";
 
@@ -84,6 +84,7 @@ const STEPS = {
   full: "Reading the whole transcript",
   gpu: "Reading on your GPU",
   verify: "Claude checking that answer",
+  marker: "Reading with the free marker (no language model)",
 };
 function stage(id, step, extra = {}) {
   const was = partial.get(id) ?? { segments: [] };
@@ -197,6 +198,20 @@ async function readWithAgents(id, video, reader) {
       return null;
     }
   }
+  // The free tier, opt-in: no language model, so nothing to verify it with; SponsorBlock only if it fails.
+  if (reader === "marker") {
+    try {
+      const t0 = Date.now();
+      stage(id, "marker");
+      const segments = await readMarker(id, video, root);
+      tried.push({ agent: AGENTS.marker, outcome: `${segments.length} segment(s)`, seconds: Math.round((Date.now() - t0) / 1000) });
+      return { ...base, segments, source: AGENTS.marker, tried };
+    } catch (e) {
+      tried.push({ agent: AGENTS.marker, outcome: `failed: ${e.message}` });
+      return { ...base, segments: await sponsorBlock(id).catch(() => []), source: "sponsorblock", reason: "the marker could not read it", tried };
+    }
+  }
+
   // A reading "agrees" with SponsorBlock when every community segment has one of ours within 60 s.
   const agrees = (ours, community) => community.every((c) => ours.some((s) => Math.abs(s.start - c.start) < 60));
 
@@ -285,7 +300,8 @@ const server = http.createServer(async (req, res) => {
       const segments = await sponsorBlock(id).catch(() => []);
       return send(res, 200, { videoId: id, segments, source: "sponsorblock", interim: true });
     }
-    const reader = url.searchParams.get("reader") === "local" ? "local" : "claude";
+    const asked = url.searchParams.get("reader");
+    const reader = asked === "local" || asked === "marker" ? asked : "claude";
     return send(res, 200, await analyze(id, { reader, fresh: url.searchParams.get("fresh") === "1" }));
   } catch (error) {
     log("FAILED", url.pathname, String(error.message).slice(0, 200));

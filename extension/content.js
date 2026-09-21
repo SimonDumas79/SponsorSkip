@@ -92,7 +92,8 @@
       segments = pick(result);
       if (!quick.data.interim) return announce();
     }
-    if (settings.enabled) toast(settings.reader === "local" ? "SponsorSkip: reading the transcript on your GPU…" : "SponsorSkip: Claude is reading the transcript…");
+    const reading = { local: "SponsorSkip: reading the transcript on your GPU…", marker: "SponsorSkip: the free marker is reading the transcript…" };
+    if (settings.enabled) toast(reading[settings.reader] ?? "SponsorSkip: Claude is reading the transcript…");
     reading = { step: "captions", label: "Fetching captions", segments: [] };
     const analyzing = send({ type: "analyze", id, reader: settings.reader, fresh });
     // The reader works through the transcript in overlapping parts. Take each

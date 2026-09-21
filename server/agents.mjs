@@ -11,9 +11,18 @@
  *           read in parts that fit its 16k context, the model is unloaded as
  *           soon as the video is done, it's skipped when the GPU is busy or
  *           warm, and it's abandoned mid-run if the GPU gets hot.
+ *
+ * And one reader that is not an agent at all (opt-in, ?reader=marker):
+ *
+ *   marker: the free tier trained in marker/ (marker/predict.py serve): a
+ *           linear marker, a context model and start/resume heads, on the
+ *           CPU, no language model. Graded on two holdouts of unseen channels
+ *           at about half the ad time skipped for 7.5-9.9 s of real show lost
+ *           per video (see marker/README.md).
  */
 import { execFile, spawn } from "node:child_process";
 import os from "node:os";
+import path from "node:path";
 import { SYSTEM_PROMPT, buildPrompt, extractJson } from "./segments.mjs";
 
 const OLLAMA = (process.env.OLLAMA_URL || "http://localhost:11434").replace(/\/+$/, "");
@@ -244,7 +253,54 @@ export async function readClaude(video, cwd, onPart) {
   return { text: full.text, costUsd: costUsd || null, parts: useHead ? 2 : 1, failed: null };
 }
 
-export const AGENTS = { local: `${LOCAL_MODEL} (local GPU)`, claude: `claude-${CLAUDE_MODEL} (Claude Code)` };
+export const AGENTS = {
+  local: `${LOCAL_MODEL} (local GPU)`,
+  claude: `claude-${CLAUDE_MODEL} (Claude Code)`,
+  marker: "marker free tier (CPU, no language model)",
+};
+
+const PYTHON = process.env.SPONSORSKIP_PYTHON || "python";
+
+/**
+ * The free tier: marker/predict.py reads the transcript on stdin and answers
+ * {segments} on stdout. It loads PyTorch and MiniLM on every call (a few
+ * seconds), which is fine beside a Claude read of 30-90 s.
+ */
+export function readMarker(id, video, root, timeoutMs = 180_000) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(PYTHON, [path.join(root, "marker", "predict.py"), "serve"], {
+      cwd: root,
+      windowsHide: true,
+      env: { ...process.env, PYTHONUTF8: "1", OMP_NUM_THREADS: "2" },
+    });
+    let out = "";
+    let err = "";
+    const timer = setTimeout(() => {
+      child.kill();
+      reject(new Error(`timed out after ${timeoutMs / 1000} s`));
+    }, timeoutMs);
+    child.stdout.on("data", (d) => (out += d));
+    child.stderr.on("data", (d) => (err += d));
+    child.on("error", (e) => {
+      clearTimeout(timer);
+      reject(e);
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      if (code !== 0) return reject(new Error(`exited ${code}: ${err.trim().split("\n").pop() ?? ""}`));
+      try {
+        const segments = JSON.parse(out).segments ?? [];
+        resolve(segments.map((s) => ({ ...s, quote: null, confidence: null })));
+      } catch {
+        reject(new Error("no JSON on stdout"));
+      }
+    });
+    child.stdin.end(
+      JSON.stringify({ videoID: id, channel: video.channel, duration: video.lengthSeconds, lines: video.transcript }),
+      "utf8",
+    );
+  });
+}
 
 /** Is the Claude Code CLI on this PC? (Cheap: no model call.) */
 export async function claudeAvailable() {

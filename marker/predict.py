@@ -153,10 +153,17 @@ def main() -> int:
     run = sub.add_parser("run")
     run.add_argument("captions", type=Path, help="a caption file as fetch_captions.py / server/youtube.mjs write them")
     sub.add_parser("check")
+    sub.add_parser("serve", help="read {videoID, channel, duration, lines:[{start,text}]} on stdin, "
+                                 "write {segments} on stdout: how server/agents.mjs calls it")
     args = ap.parse_args()
     torch.set_num_threads(4)
     if args.cmd == "export":
         export()
+    elif args.cmd == "serve":
+        caps = json.loads(sys.stdin.buffer.read().decode("utf-8"))
+        caps.setdefault("channel_id", caps.get("channel") or "unknown")
+        segments = FreeTier(device="cpu").segments(caps) if caps.get("lines") else []
+        sys.stdout.write(json.dumps({"segments": segments}))
     elif args.cmd == "run":
         caps = json.loads(args.captions.read_text(encoding="utf-8"))
         json.dump({"videoID": caps["videoID"], "segments": FreeTier().segments(caps)}, sys.stdout, indent=1)

@@ -31,6 +31,8 @@ Submissions use a private SponsorBlock user ID the extension creates once and ke
 - **Claude through Claude Code: default.**
 - **Local GPU first** (qwen3:8b via Ollama): the GPU reads, and Claude re-reads whenever the local answer cannot be confirmed — when it misses a SponsorBlock segment, when SponsorBlock has nothing to check it against, or when the GPU found nothing at all. (Until 0.6.0 the check only fired on a *disagreement*, and `[].every()` is true, so on any video SponsorBlock did not already cover the local answer was accepted unverified — exactly the videos this extension exists for.) The model is unloaded right after each video, and it's skipped when the GPU is busy (over 2.5 GB used) or warm (78 °C or more). It isn't the default because it measured far worse (below).
 
+- **Free marker on this PC** (0.7.0, opt-in): no language model at all. `marker/predict.py serve` runs the free tier trained in `marker/` (a linear marker, a context model and start/resume heads) on the CPU in about 10 s, and skips only what it is sure of. On two holdouts of channels it never saw it skipped about half of all ad time (49.6% and 49.3%) for 9.9 s and 7.5 s of real show lost per video; Claude and the GPU read more, the marker costs nothing. If it fails, SponsorBlock's answer is used. Needs the trained bundle: `python marker/predict.py export` writes `marker/data/production/free_tier.pt`. The popup option is new in 0.7.0 and was not yet tried in a browser.
+
 ## Measured (2026-09-18, two Dwarkesh Patel episodes, 6 sponsor reads)
 
 | Reader | Found | Edges | Time per episode | Cost |
