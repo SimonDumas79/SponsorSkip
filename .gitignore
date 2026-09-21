@@ -1,3 +1,5 @@
 cache/
 backend.log
 node_modules/
+marker/data/
+__pycache__/
