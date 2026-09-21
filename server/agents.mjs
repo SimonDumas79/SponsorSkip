@@ -19,6 +19,10 @@
  *           CPU, no language model. Graded on two holdouts of unseen channels
  *           at about half the ad time skipped for 7.5-9.9 s of real show lost
  *           per video (see marker/README.md).
+ *   marker-qwen: the same marker, with qwen3 on the GPU confirming each
+ *           region and placing its edges (predict.py serve --tier qwen).
+ *           Graded at 63.4% of ad time on both holdouts, for 19.9 s and
+ *           9.9 s of real show lost per video.
  */
 import { execFile, spawn } from "node:child_process";
 import os from "node:os";
@@ -257,6 +261,7 @@ export const AGENTS = {
   local: `${LOCAL_MODEL} (local GPU)`,
   claude: `claude-${CLAUDE_MODEL} (Claude Code)`,
   marker: "marker free tier (CPU, no language model)",
+  "marker-qwen": `marker + ${LOCAL_MODEL} checks (local GPU)`,
 };
 
 const PYTHON = process.env.SPONSORSKIP_PYTHON || "python";
@@ -266,9 +271,9 @@ const PYTHON = process.env.SPONSORSKIP_PYTHON || "python";
  * {segments} on stdout. It loads PyTorch and MiniLM on every call (a few
  * seconds), which is fine beside a Claude read of 30-90 s.
  */
-export function readMarker(id, video, root, timeoutMs = 180_000) {
+export function readMarker(id, video, root, { tier = "free", timeoutMs = tier === "qwen" ? 600_000 : 180_000 } = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn(PYTHON, [path.join(root, "marker", "predict.py"), "serve"], {
+    const child = spawn(PYTHON, [path.join(root, "marker", "predict.py"), "serve", "--tier", tier], {
       cwd: root,
       windowsHide: true,
       env: { ...process.env, PYTHONUTF8: "1", OMP_NUM_THREADS: "2" },

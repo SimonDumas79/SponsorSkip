@@ -88,7 +88,7 @@ api.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   const route = {
     health: () => call("/health", 20_000),
     quick: () => call(`/quick/${msg.id}`, 15_000),
-    analyze: () => call(`/analyze/${msg.id}?reader=${["local", "marker"].includes(msg.reader) ? msg.reader : "claude"}${msg.fresh ? "&fresh=1" : ""}`, 300_000),
+    analyze: () => call(`/analyze/${msg.id}?reader=${["local", "marker", "marker-qwen"].includes(msg.reader) ? msg.reader : "claude"}${msg.fresh ? "&fresh=1" : ""}`, 300_000),
     progress: () => call(`/progress/${msg.id}`, 10_000),
     sbLookup: () => sbLookup(msg.id),
     sbSubmit: () => sbSubmit(msg),

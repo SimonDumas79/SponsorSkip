@@ -85,6 +85,7 @@ const STEPS = {
   gpu: "Reading on your GPU",
   verify: "Claude checking that answer",
   marker: "Reading with the free marker (no language model)",
+  markerQwen: "The marker finds, your GPU checks each find",
 };
 function stage(id, step, extra = {}) {
   const was = partial.get(id) ?? { segments: [] };
@@ -198,16 +199,26 @@ async function readWithAgents(id, video, reader) {
       return null;
     }
   }
-  // The free tier, opt-in: no language model, so nothing to verify it with; SponsorBlock only if it fails.
-  if (reader === "marker") {
+  // The marker readers, opt-in. marker-qwen needs the GPU; when the GPU is busy or warm it runs as
+  // the free tier instead, and says so. SponsorBlock only if the marker itself fails.
+  if (reader === "marker" || reader === "marker-qwen") {
+    let tier = reader === "marker-qwen" ? "qwen" : "free";
+    if (tier === "qwen") {
+      const blocker = await localBlocker();
+      if (blocker) {
+        tried.push({ agent: AGENTS["marker-qwen"], outcome: `skipped: ${blocker}; running the free marker instead` });
+        tier = "free";
+      }
+    }
+    const agent = tier === "qwen" ? AGENTS["marker-qwen"] : AGENTS.marker;
     try {
       const t0 = Date.now();
-      stage(id, "marker");
-      const segments = await readMarker(id, video, root);
-      tried.push({ agent: AGENTS.marker, outcome: `${segments.length} segment(s)`, seconds: Math.round((Date.now() - t0) / 1000) });
-      return { ...base, segments, source: AGENTS.marker, tried };
+      stage(id, tier === "qwen" ? "markerQwen" : "marker");
+      const segments = await readMarker(id, video, root, { tier });
+      tried.push({ agent, outcome: `${segments.length} segment(s)`, seconds: Math.round((Date.now() - t0) / 1000) });
+      return { ...base, segments, source: agent, tried };
     } catch (e) {
-      tried.push({ agent: AGENTS.marker, outcome: `failed: ${e.message}` });
+      tried.push({ agent, outcome: `failed: ${e.message}` });
       return { ...base, segments: await sponsorBlock(id).catch(() => []), source: "sponsorblock", reason: "the marker could not read it", tried };
     }
   }
@@ -301,7 +312,7 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, { videoId: id, segments, source: "sponsorblock", interim: true });
     }
     const asked = url.searchParams.get("reader");
-    const reader = asked === "local" || asked === "marker" ? asked : "claude";
+    const reader = ["local", "marker", "marker-qwen"].includes(asked) ? asked : "claude";
     return send(res, 200, await analyze(id, { reader, fresh: url.searchParams.get("fresh") === "1" }));
   } catch (error) {
     log("FAILED", url.pathname, String(error.message).slice(0, 200));

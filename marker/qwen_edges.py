@@ -60,6 +60,15 @@ def ask_edges(prompt: str, timeout: float = 180.0) -> dict | None:
         return None
 
 
+def edge_window(lines: list[dict], lo: int, hi: int) -> tuple[int, int, str]:
+    """(first line, end line, numbered text) of the window qwen places edges in for region [lo, hi)."""
+    wlo, whi = max(0, lo - REACH), min(len(lines), hi + REACH)
+    if whi - wlo > MAX_LINES:
+        mid = (lo + hi) // 2
+        wlo, whi = max(0, mid - MAX_LINES // 2), min(len(lines), mid + MAX_LINES // 2)
+    return wlo, whi, "\n".join(f"{i - wlo:3d}: {' '.join(lines[i]['text'].split())}" for i in range(wlo, whi))
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--verdicts", type=Path, default=DATA / "confirm_verdicts.jsonl")
@@ -86,11 +95,7 @@ def main() -> int:
             for n, v in enumerate(todo, 1):
                 lines = caps_cache.setdefault(v["video"], json.loads(
                     (captions / f"{v['video']}.json").read_text(encoding="utf-8"))["lines"])
-                wlo, whi = max(0, v["lo"] - REACH), min(len(lines), v["hi"] + REACH)
-                if whi - wlo > MAX_LINES:
-                    mid = (v["lo"] + v["hi"]) // 2
-                    wlo, whi = max(0, mid - MAX_LINES // 2), min(len(lines), mid + MAX_LINES // 2)
-                text = "\n".join(f"{i - wlo:3d}: {' '.join(lines[i]['text'].split())}" for i in range(wlo, whi))
+                wlo, whi, text = edge_window(lines, v["lo"], v["hi"])
                 answer = ask_edges(f"{ASK}\n\n{text}")
                 rec = {"id": v["id"], "video": v["video"], "lo": v["lo"], "hi": v["hi"], "wlo": wlo, "whi": whi,
                        "start_line": answer.get("start_line") if answer else None,

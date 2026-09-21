@@ -12,6 +12,7 @@ const STEP_ORDER = {
   claude: ["captions", "opening", "full"],
   local: ["captions", "gpu", "verify", "full"],
   marker: ["captions", "marker"],
+  "marker-qwen": ["captions", "markerQwen"],
 };
 const STEP = {
   captions: { label: "Fetching captions", color: "#7aa2f7" },
@@ -20,6 +21,7 @@ const STEP = {
   gpu: { label: "Reading on your GPU", color: "#bb9af7" },
   verify: { label: "Claude checking that answer", color: "#e0af68" },
   marker: { label: "Reading with the free marker", color: "#73daca" },
+  markerQwen: { label: "The marker finds, your GPU checks", color: "#2ac3de" },
 };
 
 function renderSteps(reading) {

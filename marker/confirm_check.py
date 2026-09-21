@@ -121,6 +121,15 @@ def checker_threshold(oof: np.ndarray, rows, gate: float, smooth_w: int) -> floa
     return best
 
 
+def window_text(lines: list[dict], lo: int, hi: int) -> str:
+    """The numbered caption lines qwen is shown for region [lo, hi): CONTEXT either side, at most MAX_LINES."""
+    wlo, whi = max(0, lo - CONTEXT), min(len(lines), hi + CONTEXT)
+    if whi - wlo > MAX_LINES:   # keep the window centred on the region
+        mid = (lo + hi) // 2
+        wlo, whi = max(0, mid - MAX_LINES // 2), min(len(lines), mid + MAX_LINES // 2)
+    return "\n".join(f"{i - wlo:3d}: {lines[i]['text']}" for i in range(wlo, whi))
+
+
 def windows(oof: np.ndarray, rows, threshold: float, captions_dir: Path, smooth_w: int) -> list[dict]:
     """One record per flagged region, with the caption text the checker will see."""
     out = []
@@ -131,10 +140,6 @@ def windows(oof: np.ndarray, rows, threshold: float, captions_dir: Path, smooth_
         flags = smooth((oof[r] >= threshold).astype(np.int8), smooth_w)
         labels = rows.y[r]
         for lo, hi in runs(flags):
-            wlo, whi = max(0, lo - CONTEXT), min(len(lines), hi + CONTEXT)
-            if whi - wlo > MAX_LINES:   # keep the window centred on the region
-                mid = (lo + hi) // 2
-                wlo, whi = max(0, mid - MAX_LINES // 2), min(len(lines), mid + MAX_LINES // 2)
             true_inside = bool(labels[max(0, lo - SLACK):hi + SLACK].any())
             out.append({
                 "id": f"{vid}:{lo}-{hi}", "video": vid, "channel": str(rows.channel[r][0]),
@@ -142,7 +147,7 @@ def windows(oof: np.ndarray, rows, threshold: float, captions_dir: Path, smooth_
                 "seconds": float(rows.start_seconds[r][min(hi, len(r) - 1)] - rows.start_seconds[r][lo]),
                 "marker_peak": float(oof[r][lo:hi].max()),
                 "is_read": true_inside,
-                "text": "\n".join(f"{i - wlo:3d}: {lines[i]['text']}" for i in range(wlo, whi)),
+                "text": window_text(lines, lo, hi),
             })
     return out
 

@@ -69,13 +69,18 @@ def place(kept: dict[str, list[tuple[int, int]]], rows, p_start: np.ndarray, p_e
 
 
 def qwen_placed(kept, edges_path: Path, rows):
-    """qwen's line numbers, translated from window positions to video lines; region edges where it gave none."""
+    """qwen's recorded line numbers (a qwen_edges.py file) applied to the kept regions."""
     answers = {}
     if edges_path.exists():
         for line in edges_path.read_text(encoding="utf-8").splitlines():
             if line.strip():
                 rec = json.loads(line)
                 answers[rec["id"]] = rec
+    return place_from_answers(kept, answers, rows)
+
+
+def place_from_answers(kept, answers: dict, rows):
+    """qwen's line numbers, translated from window positions to video lines; region edges where it gave none."""
     placed, used = {}, 0
     for vid, spans in kept.items():
         n = int((rows.video == vid).sum())
