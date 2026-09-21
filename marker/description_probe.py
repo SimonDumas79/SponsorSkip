@@ -6,8 +6,7 @@ import json, re, subprocess, sys, time
 from pathlib import Path
 import numpy as np
 
-REPO = Path(r"C:\Users\Simon\source\repos\SponsorSkip")
-DATA = REPO / "marker" / "data"
+DATA = Path(__file__).resolve().parent / "data"
 N, PAUSE = int(sys.argv[1]) if len(sys.argv) > 1 else 25, 8.0
 OUT = DATA / "descriptions_probe.json"
 

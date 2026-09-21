@@ -3,7 +3,7 @@ import json, re
 from pathlib import Path
 import numpy as np
 
-DATA = Path(r"C:\Users\Simon\source\repos\SponsorSkip\marker\data")
+DATA = Path(__file__).resolve().parent / "data"
 got = {k: v for k, v in json.loads((DATA / "descriptions_probe.json").read_text(encoding="utf-8")).items() if v}
 text = {}
 with (DATA / "examples.jsonl").open(encoding="utf-8") as f:
