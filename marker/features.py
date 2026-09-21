@@ -180,7 +180,8 @@ def main() -> int:
         caps = json.loads((args.captions / f"{vid}.json").read_text(encoding="utf-8"))
         X_parts.append(video_features(vectors[at : at + len(vrows)], vrows, caps.get("duration") or 0.0))
         y_parts.append(np.array([r["label"] for r in vrows], dtype=np.int8))
-        meta.extend((vid, r["i"], r["split"], r["is_start"], r["start"], r["channel_id"]) for r in vrows)
+        meta.extend((vid, r["i"], r["split"], r["is_start"], r["start"], r["channel_id"],
+                     r.get("is_resume", 0), r.get("category", "sponsor" if r["label"] else "")) for r in vrows)
         at += len(vrows)
 
     X = np.vstack(X_parts).astype(np.float32)
@@ -195,6 +196,8 @@ def main() -> int:
         is_start=np.array([m[3] for m in meta], dtype=np.int8),
         start_seconds=np.array([m[4] for m in meta], dtype=np.float32),
         channel=np.array([m[5] for m in meta]),
+        is_resume=np.array([m[6] for m in meta], dtype=np.int8),   # first line after a read: an END label
+        category=np.array([m[7] for m in meta]),                    # "sponsor", "selfpromo" or ""
         feature_names=np.array(
             [f"meaning_{i}" for i in range(vectors.shape[1])]
             + ["seam_here", "seam_sharpest_behind", "seam_distance_behind"]

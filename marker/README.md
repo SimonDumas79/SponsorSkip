@@ -25,18 +25,57 @@ pip install --user sentence-transformers scikit-learn   # torch + yt-dlp already
 python marker/sample_segments.py --prefixes 40     # SponsorBlock -> data/raw_segments.json
 python marker/pick_videos.py --take 450            # filter        -> data/candidates.json
 python marker/fetch_captions.py --limit 300        # yt-dlp, slow  -> data/captions/*.json
-python marker/build_dataset.py                     # label         -> data/examples.jsonl
+python marker/fetch_selfpromo.py                   # SponsorBlock  -> data/selfpromo.json
+python marker/build_dataset.py --not-in marker/data/examples_tail.jsonl   # label -> data/examples.jsonl
 python marker/features.py                          # MiniLM        -> data/features.npz
 python marker/score.py --baseline                  # the number to beat
+python marker/train.py                             # CV by channel, thresholds, marker.pt
+python marker/train.py --holdout                   # ONCE, at the end: the holdout grade
 ```
+
+The holdout is built the same way from `candidates_tail.json` and `captions_tail/`
+with `build_dataset.py --all-to holdout` and `features.py --out data/features_tail.npz`.
+Build it FIRST: the training build's `--not-in` reads it to keep every holdout
+channel out of training.
 
 Every step is resumable and skips work already done, so a stopped fetch can just
 be run again. Nothing in `data/` is committed.
 
-`train.py` is Simon's to write. It reads `data/features.npz` (`X`, `y`, and which
-`split` each row belongs to) and writes one `.npy` of probabilities for the
-validation rows; `score.py --scores that_file.npy` grades it. Nothing here needs
-to know how the model works.
+**Labels are SponsorBlock's `sponsor` AND `selfpromo` segments**, because the
+extension skips both by default. Measured 2026-09-21: with sponsor-only labels the
+marker's worst "false alarm" was 215 s of a host's own app launch, and the metric
+called it lost show.
+
+`train.py` trains the linear marker and chooses its two thresholds by rule from
+channel-grouped cross-validation (with a checker: highest threshold keeping 90%
+recall; alone: lowest threshold flagging under the show budget). `experiments.py`
+searches training and post-processing levers with a genetic algorithm, judged by
+recall across budgets of 1-15 s of lost show per video, and never touches the
+holdout; frontier candidates are saved to `data/zoo/` with their out-of-fold
+scores so they can be cloned, mutated or stacked later.
+
+## The system of models (2026-09-21)
+
+The marker is one of several small models, each with one job. Every stage after
+the marker is trained on OUT-OF-FOLD scores with the same channel folds, and
+every language-model answer is recorded once and replayed after that.
+
+| Job | Script | What it is |
+|---|---|---|
+| detect | `train.py` | the linear marker: one score per caption line |
+| detect, in context | `context_stack.py` | a second stage reading the marker's logits for 15 lines either side: it learns the shape of a read |
+| confirm, free | `region_judge.py` | a logistic model over each flagged region's facts (length, confidence, cues, seam, position) |
+| confirm, local GPU | `confirm_check.py` | qwen3 says yes/no per flagged window; every answer recorded to `data/confirm_verdicts*.jsonl` |
+| place edges | `edge_heads.py` | start and resume models trained on `is_start` / `is_resume` |
+| place edges, local GPU | `qwen_edges.py` | qwen3 gives the start line and the resume line, as Claude does in `server/verify.mjs` |
+| choose and grade | `replay.py`, `system_eval.py` | routing rules scored over the recorded answers for free (the Dream-RSI idea); settings chosen by one written rule on CV, graded once on the holdout |
+
+**Grade on ad TIME, not just reads.** Region recall counts a read as found if one
+line of it is skipped, so a policy that skips a tight core looks excellent while
+most of each ad plays: measured 2026-09-21, a rule touching 82% of reads skipped
+only 26% of ad time. `replay.py` reports `ad cov` (share of all ad seconds skipped)
+beside recall, and the system is chosen to maximise ad time skipped under a
+budget of real show lost per video, with a cap on the worst single video.
 
 ## Notes worth keeping
 

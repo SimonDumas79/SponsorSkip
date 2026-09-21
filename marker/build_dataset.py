@@ -47,14 +47,18 @@ def line_span(lines: list[dict], i: int, fallback: float = 3.0) -> tuple[float, 
     return start, max(end, start + 0.1)
 
 
-def label_video(caps: dict, segments: list[list[float]]) -> list[dict]:
-    """One example per caption line, labelled from the SponsorBlock segments."""
+def label_video(caps: dict, spans: list[tuple[float, float, str]]) -> list[dict]:
+    """One example per caption line, labelled from the SponsorBlock spans (start, end, category).
+
+    label is 1 inside any span; category says which kind ("sponsor" or "selfpromo"), because
+    the extension skips both by default and the marker has to find both.
+    """
     lines = caps["lines"]
     rows = []
     for i, line in enumerate(lines):
         start, end = line_span(lines, i)
         middle = (start + end) / 2
-        inside = any(s <= middle <= e for s, e in segments)
+        category = next((c for s, e, c in spans if s <= middle <= e), "")
         rows.append(
             {
                 "videoID": caps["videoID"],
@@ -65,7 +69,8 @@ def label_video(caps: dict, segments: list[list[float]]) -> list[dict]:
                 "context": " ".join(
                     l["text"] for l in lines[max(0, i - CONTEXT_BEFORE) : i + CONTEXT_AFTER + 1]
                 ),
-                "label": int(inside),
+                "label": int(bool(category)),
+                "category": category,
                 "is_start": 0,
                 "is_resume": 0,
             }
@@ -93,22 +98,51 @@ def main() -> int:
              "tail holdout, which is a separate set of videos scored on its own and never trained on.",
     )
     ap.add_argument("--seed", type=int, default=20260920)
+    ap.add_argument(
+        "--not-in",
+        type=Path,
+        default=None,
+        help="an examples file (the holdout's) whose channels must not appear here, so that a crawl "
+             "video from a holdout channel can never leak into training",
+    )
+    ap.add_argument(
+        "--selfpromo",
+        type=Path,
+        default=HERE / "data" / "selfpromo.json",
+        help="fetch_selfpromo.py's file; its segments are labelled too, so the marker learns what the "
+             "extension skips by default. Skipped quietly if the file does not exist.",
+    )
     args = ap.parse_args()
 
     segments_by_video = {v["videoID"]: v["segments"] for v in json.loads(args.candidates.read_text(encoding="utf-8"))}
+    selfpromo_by_video = json.loads(args.selfpromo.read_text(encoding="utf-8")) if args.selfpromo.exists() else {}
+    reserved_channels = set()
+    if args.not_in and args.not_in.exists():
+        with args.not_in.open(encoding="utf-8") as f:
+            reserved_channels = {json.loads(line)["channel_id"] for line in f if line.strip()}
 
     rows_by_channel: dict[str, list[dict]] = defaultdict(list)
-    videos = skipped = 0
+    videos = skipped = reserved = 0
     for path in sorted(args.captions.glob("*.json")):
         caps = json.loads(path.read_text(encoding="utf-8"))
         segments = segments_by_video.get(caps["videoID"])
         if not segments:
             skipped += 1
             continue
-        rows = label_video(caps, segments)
-        # A video where the labels found nothing is a labelling failure (caption
-        # times not matching the segment times), not a video without a sponsor.
-        if not any(r["label"] for r in rows):
+        if (caps["channel_id"] or caps["channel"] or "unknown") in reserved_channels:
+            reserved += 1
+            continue
+        spans = [(s, e, "sponsor") for s, e in segments]
+        # Self-promo gets the same trust rule as pick_videos.py (nothing downvoted) and a wider
+        # length window, because a host pitching their own course can run past three minutes.
+        spans += [(p["start"], p["end"], "selfpromo") for p in selfpromo_by_video.get(caps["videoID"], [])
+                  if p["votes"] >= 0 and 5 <= p["end"] - p["start"] <= 300]
+        rows = label_video(caps, spans)
+        # A video where the SPONSOR labels found nothing is a labelling failure (caption
+        # times not matching the segment times), not a video without a sponsor. Judged on
+        # the sponsor segments alone so that adding self-promo never changes which videos
+        # are kept, and so the channel split stays exactly what it was.
+        if not any(r["category"] == "sponsor" for r in rows):
             skipped += 1
             continue
         rows_by_channel[rows[0]["channel_id"]].extend(rows)
@@ -131,18 +165,21 @@ def main() -> int:
 
     total = sum(len(r) for r in rows_by_channel.values())
     positives = sum(1 for rs in rows_by_channel.values() for r in rs if r["label"])
+    promo = sum(1 for rs in rows_by_channel.values() for r in rs if r["category"] == "selfpromo")
     starts = sum(1 for rs in rows_by_channel.values() for r in rs if r["is_start"])
-    print(f"{videos} videos across {len(channels)} channels ({skipped} skipped)")
-    print(f"{total:,} caption lines, {positives:,} inside a sponsor read ({100 * positives / max(total, 1):.1f}%), {starts} read starts")
+    print(f"{videos} videos across {len(channels)} channels ({skipped} skipped, {reserved} left out: holdout channels)")
+    print(f"{total:,} caption lines, {positives:,} inside a sponsor or self-promo read "
+          f"({100 * positives / max(total, 1):.1f}%; {promo:,} of them self-promo), {starts} read starts")
     if args.all_to:
         print(f"every row marked split '{args.all_to}' -- {len(channels)} channels, scored on its own")
     else:
         print(f"train: {len(train_channels)} channels   val: {len(val_channels)} channels (never seen in training)")
     print(f"-> {args.out}")
 
-    (args.out.parent / "split.json").write_text(
-        json.dumps({"train": sorted(train_channels), "val": sorted(val_channels)}, indent=1), encoding="utf-8"
-    )
+    if not args.all_to:   # the holdout build must not overwrite the real split
+        (args.out.parent / "split.json").write_text(
+            json.dumps({"train": sorted(train_channels), "val": sorted(val_channels)}, indent=1), encoding="utf-8"
+        )
     return 0
 
 

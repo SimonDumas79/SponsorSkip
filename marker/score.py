@@ -74,7 +74,9 @@ def smooth(flags: np.ndarray, window: int) -> np.ndarray:
     """Bridge one-line gaps: a read is a run, not a scatter of single lines."""
     if window <= 1:
         return flags
-    padded = np.convolve(flags.astype(np.float32), np.ones(window), mode="same")
+    # Padding first keeps the output exactly as long as the input; np.convolve(mode="same") returns
+    # max(len, window) values, which misaligns anything shorter than the window.
+    padded = np.convolve(np.pad(flags.astype(np.float32), window // 2), np.ones(window), mode="valid")
     return (padded > 0).astype(np.int8)
 
 
@@ -83,8 +85,9 @@ def main() -> int:
     ap.add_argument("--features", type=Path, default=HERE / "data" / "features.npz")
     ap.add_argument("--baseline", action="store_true", help="grade the cue patterns instead of a model")
     ap.add_argument("--scores", type=Path, help="a .npy of one probability per validation row")
-    ap.add_argument("--threshold", type=float, default=0.5, help="flag a line when its probability is above this")
+    ap.add_argument("--threshold", type=float, default=0.5, help="flag a line when its probability is at or above this")
     ap.add_argument("--slack", type=int, default=3, help="caption lines of slack when matching a flag to a read")
+    ap.add_argument("--smooth", type=int, default=3, help="bridge gaps of this many lines (1 = off), as train.py --smooth")
     ap.add_argument("--split", default="val")
     args = ap.parse_args()
 
@@ -111,7 +114,7 @@ def main() -> int:
     for vid in np.unique(videos):
         rows = videos == vid
         channel = str(channels[rows][0])
-        for i, v in enumerate(score_video(labels[rows], smooth(flags[rows], 3), args.slack)):
+        for i, v in enumerate(score_video(labels[rows], smooth(flags[rows], args.smooth), args.slack)):
             totals[i] += v
             by_channel[channel][i] += v
 
@@ -127,7 +130,7 @@ def main() -> int:
     print(f"  cost            {flagged_n / max(len(np.unique(videos)), 1):.1f} Claude windows per video")
     print()
     print("A read is 'flagged' when any line inside it, give or take "
-          f"{args.slack} caption lines, scored above the threshold.")
+          f"{args.slack} caption lines, scored at or above the threshold.")
     # The average hides the failure that matters, so show the channels it fails on.
     missed = sorted(
         ((c, f, t) for c, (f, t, _, _) in by_channel.items() if f < t),
