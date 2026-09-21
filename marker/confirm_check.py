@@ -179,6 +179,10 @@ def main() -> int:
                          "out-of-fold (use for the holdout: --features features_tail.npz --train-on features.npz)")
     ap.add_argument("--verdicts", type=Path, default=VERDICTS)
     ap.add_argument("--config", type=Path, help="a zoo candidate's config.json (default: the baseline marker)")
+    ap.add_argument("--scores", type=Path,
+                    help="precomputed probabilities, one per row of --features (e.g. context_stack_oof.npy): "
+                         "regions are cut from these instead of training a marker; needs --threshold")
+    ap.add_argument("--smooth", type=int, help="bridge gaps of this many lines when cutting regions (default: the config's)")
     ap.add_argument("--reuse", type=Path, nargs="*", default=[],
                     help="other verdict files: a window with the same id there has the same text, so its answer is reused")
     ap.add_argument("--no-logprob", action="store_true", help="ask only for the yes/no (half the GPU time)")
@@ -192,7 +196,15 @@ def main() -> int:
     torch.set_num_threads(4)
     cfg = canonical(json.loads(args.config.read_text(encoding="utf-8"))) if args.config else dict(BASE)
     rows = load(args.features)
-    if args.train_on:
+    if args.smooth is not None:
+        cfg["smooth"] = args.smooth
+    if args.scores:
+        if args.threshold is None:
+            raise SystemExit("--scores needs --threshold, chosen on cross-validation")
+        oof = np.load(args.scores)
+        if len(oof) != len(rows):
+            raise SystemExit(f"{args.scores} has {len(oof)} scores for {len(rows)} rows")
+    elif args.train_on:
         if args.threshold is None:
             raise SystemExit("--train-on needs --threshold: a holdout threshold must be chosen on cross-validation")
         oof = trained_scores(cfg, args.train_on, rows)
@@ -226,6 +238,18 @@ def main() -> int:
                     reused += 1
     if reused:
         print(f"{reused} answers available from --reuse files")
+    # Copy every reused answer this run actually uses into this run's own file, so the file alone
+    # describes the run and replay.py never finds a region without a recorded answer.
+    wins_by_id = {w["id"]: w for w in wins}
+    borrowed = [i for i, rec in done.items() if rec.get("reused_from") and i in wins_by_id]
+    if borrowed:
+        with VERDICTS.open("a", encoding="utf-8") as f:
+            for i in borrowed:
+                rec = {k: v for k, v in wins_by_id[i].items() if k != "text"}
+                rec.update({k: done[i].get(k) for k in ("said", "p_yes", "model")}, reused_from=done[i]["reused_from"])
+                f.write(json.dumps(rec) + "\n")
+                done[i] = rec
+        print(f"{len(borrowed)} reused answers written into {VERDICTS.name}")
     todo = [w for w in wins if w["id"] not in done]
     if args.report_only:
         todo = []

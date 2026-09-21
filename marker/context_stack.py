@@ -113,10 +113,22 @@ def main() -> int:
     ap.add_argument("--level1", type=Path, default=None,
                     help="a zoo folder whose oof_seed0.npy is the level-1 score (default: the baseline marker)")
     ap.add_argument("--holdout", action="store_true", help="apply the CV-chosen setup to the holdout, once")
+    ap.add_argument("--apply", nargs=3, metavar=("FEATURES", "LEVEL1_SCORES", "OUT"),
+                    help="train the second stage (32 hidden) on all CV rows and write its probabilities for "
+                         "another set, from that set's marker scores; grades nothing")
     args = ap.parse_args()
     torch.set_num_threads(4)
 
     rows = load(DATA / "features.npz")
+    if args.apply:
+        from experiments import BASE, cross_validate
+        features, scores, out = (Path(a) for a in args.apply)
+        F = context_features(rows, cross_validate(BASE, rows, seed=0))
+        other = load(features)
+        probs = fit_stage2(F, rows.y.astype(np.float32), hidden=32)(context_features(other, np.load(scores)))
+        np.save(out, probs)
+        print(f"wrote {len(probs)} second-stage probabilities to {out}")
+        return 0
     if args.level1:
         level1 = np.load(args.level1 / "oof_seed0.npy")
         name1 = args.level1.name

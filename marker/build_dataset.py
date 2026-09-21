@@ -101,8 +101,9 @@ def main() -> int:
     ap.add_argument(
         "--not-in",
         type=Path,
-        default=None,
-        help="an examples file (the holdout's) whose channels must not appear here, so that a crawl "
+        nargs="+",
+        default=[],
+        help="examples files (the holdout's) whose channels must not appear here, so that a crawl "
              "video from a holdout channel can never leak into training",
     )
     ap.add_argument(
@@ -117,9 +118,9 @@ def main() -> int:
     segments_by_video = {v["videoID"]: v["segments"] for v in json.loads(args.candidates.read_text(encoding="utf-8"))}
     selfpromo_by_video = json.loads(args.selfpromo.read_text(encoding="utf-8")) if args.selfpromo.exists() else {}
     reserved_channels = set()
-    if args.not_in and args.not_in.exists():
-        with args.not_in.open(encoding="utf-8") as f:
-            reserved_channels = {json.loads(line)["channel_id"] for line in f if line.strip()}
+    for path in args.not_in:
+        with path.open(encoding="utf-8") as f:
+            reserved_channels |= {json.loads(line)["channel_id"] for line in f if line.strip()}
 
     rows_by_channel: dict[str, list[dict]] = defaultdict(list)
     videos = skipped = reserved = 0

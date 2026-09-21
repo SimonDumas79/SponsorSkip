@@ -52,7 +52,7 @@ def load_run(verdicts_path: Path):
     return rows, scores, threshold, smooth_w, load_verdicts(verdicts_path)
 
 
-def region_table(rows, scores, threshold, smooth_w, verdicts):
+def region_table(rows, scores, threshold, smooth_w, verdicts, strict: bool = True):
     """One row of facts per flagged region, plus whether it really held a read."""
     facts, info = [], []
     for vid, spans in regions_by_video(scores, rows, threshold, smooth_w).items():
@@ -61,7 +61,9 @@ def region_table(rows, scores, threshold, smooth_w, verdicts):
         for lo, hi in spans:
             v = verdicts.get(f"{vid}:{lo}-{hi}")
             if v is None:
-                raise SystemExit(f"no recorded verdict for region {vid}:{lo}-{hi}; the replay would not be honest")
+                if strict:
+                    raise SystemExit(f"no recorded verdict for region {vid}:{lo}-{hi}; the replay would not be honest")
+                v = {"said": None, "p_yes": None}   # qwen never asked: only the free judge may use this row
             seconds = float(t[min(hi, len(r) - 1)] - t[lo]) + 1.0
             facts.append([
                 s[lo:hi].max(), s[lo:hi].mean(), (s[lo:hi] >= 0.95).mean(), (s[lo:hi] >= 0.99).mean(),
@@ -71,7 +73,7 @@ def region_table(rows, scores, threshold, smooth_w, verdicts):
                 float(v["said"] is True), v["p_yes"] if v.get("p_yes") is not None else -1.0,
             ])
             info.append({"video": vid, "channel": str(rows.channel[r][0]), "lo": lo, "hi": hi,
-                         "is_read": bool(v["is_read"])})
+                         "is_read": bool(rows.y[r][max(0, lo - 3):hi + 3].any())})   # from the labels, as score.py
     return np.array(facts, dtype=np.float64), info
 
 
