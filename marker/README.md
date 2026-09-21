@@ -126,6 +126,18 @@ read-weighted 41.7% at 7.2 s with short reads at 21% / 32%; both 43.5% at 7.8 s
 with short reads at 21% / 34%. Read-weighting quadruples what short reads get,
 but pays for it in long reads and lost show: total ad time does not move.
 
+**Would more of the same data help?** (`learning_curve.py`, pooled set subsampled by
+channel, three draws each, B = 10): 25% of channels 29.7% of ad time, 50% 37.6%,
+75% 44.3%, 100% 43.6%. Steep to 75%, flat after, with a spread of about 5 points
+between draws, so "flat" is inside the noise but the gains are clearly slowing.
+More SponsorBlock-tail crawl of the same kind is at diminishing returns; the data
+worth having is a different kind (hard negatives, labels owing nothing to
+SponsorBlock), or a different signal. **The video description is that signal**,
+probed on 25 CV videos with sponsor reads (`descriptions_probe.json`): tokens taken
+from the description alone (link domains, the word after "code", capitalised names on
+link lines) land inside 33 of 44 reads, while only 20% of the caption lines they hit
+are inside a read, so it is a feature for the context model, not a rule. Not built.
+
 The heads' outward reach is what wins ad time on real reads; on a false region it
 widens the damage (44 s -> 144 s on the Windows video), and that is the price, not a
 bug. Cutting it loses far more than it saves.
