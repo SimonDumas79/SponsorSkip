@@ -76,7 +76,7 @@ def fetch(video_id: str, timeout: float = 120.0) -> dict | None:
                 "--skip-download", "--no-simulate", "--no-warnings", "--quiet",
                 "--write-subs", "--write-auto-subs", "--sub-langs", SUB_LANGS, "--sub-format", "json3",
                 "--sleep-requests", "1", "--sleep-subtitles", "3",
-                "--print", "%(title)s\t%(duration)s\t%(channel)s\t%(channel_id)s",
+                "--print", "%(title)s\t%(duration)s\t%(channel)s\t%(channel_id)s\t%(language)s",
                 "-o", "%(id)s.%(ext)s",
                 f"https://www.youtube.com/watch?v={video_id}",
             ],
@@ -88,19 +88,24 @@ def fetch(video_id: str, timeout: float = 120.0) -> dict | None:
                 raise RateLimited(err[:200])
             raise RuntimeError(err.splitlines()[-1][:160] if err else f"yt-dlp exited {proc.returncode}")
 
-        title, duration, channel, channel_id = (proc.stdout.strip().split("\n")[0].split("\t") + ["", "", "", ""])[:4]
+        fields = (proc.stdout.strip().split("\n")[0].split("\t") + [""] * 5)[:5]
+        title, duration, channel, channel_id, language = fields
         name = pick_caption_file(os.listdir(tmp), video_id)
         if not name:
             return None
         lines = parse_json3(json.loads(Path(tmp, name).read_text(encoding="utf-8")))
         if not lines:
             return None
+        # The video's spoken language, as YouTube reports it. When it is not English, the "en" track we
+        # read is a machine translation: the class behind the worst video in every set so far
+        # (measured 2026-09-21: bqtppv75MJg, Russian, language "ru", the en track's URL carries tlang=).
         return {
             "videoID": video_id,
             "title": title or None,
             "channel": channel if channel and channel != "NA" else None,
             "channel_id": channel_id if channel_id and channel_id != "NA" else None,
             "duration": float(duration) if duration.replace(".", "").isdigit() else None,
+            "language": language if language and language != "NA" else None,
             "captionFile": name,
             "lines": lines,
         }

@@ -62,19 +62,22 @@ export async function getTranscript(videoId, { python = process.env.SPONSORSKIP_
         "-m", "yt_dlp",
         "--skip-download", "--no-simulate", "--no-warnings", "--quiet",
         "--write-subs", "--write-auto-subs", "--sub-langs", SUB_LANGS, "--sub-format", "json3",
-        "--print", "%(title)s\t%(duration)s\t%(channel)s",
+        "--print", "%(title)s\t%(duration)s\t%(channel)s\t%(language)s",
         "-o", "%(id)s.%(ext)s",
         `https://www.youtube.com/watch?v=${videoId}`,
       ],
       dir,
     );
-    const [title, duration, channel] = out.trim().split("\n")[0].split("\t");
+    const [title, duration, channel, language] = out.trim().split("\n")[0].split("\t");
     const file = pickCaptionFile(fs.readdirSync(dir), videoId);
     const transcript = file ? parseJson3(JSON.parse(fs.readFileSync(path.join(dir, file), "utf8"))) : null;
     return {
       title: title || null,
       channel: channel && channel !== "NA" ? channel : null,
       lengthSeconds: Number(duration) || null,
+      // The spoken language YouTube reports ("ru", "en", …; null when unknown). When it is not English the
+      // "en" track is a machine translation, the class behind the worst video in every measured set.
+      language: language && language !== "NA" ? language : null,
       transcript: transcript?.length ? transcript : null,
       captionFile: file,
     };

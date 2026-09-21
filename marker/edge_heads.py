@@ -53,6 +53,19 @@ def edge_oof(rows, F, target: np.ndarray, folds: int = 5, seed: int = 0) -> np.n
     return p
 
 
+def merged(spans: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    """Overlapping or touching spans joined into one. Two nearby regions often land on the same start line
+    once the heads have moved them (seen 2026-09-21: the same span three times in one video), and the
+    extension must not be sent the same skip twice."""
+    out: list[tuple[int, int]] = []
+    for a, b in sorted(spans):
+        if out and a <= out[-1][1]:
+            out[-1] = (out[-1][0], max(out[-1][1], b))
+        else:
+            out.append((a, b))
+    return out
+
+
 def place(kept: dict[str, list[tuple[int, int]]], rows, p_start: np.ndarray, p_end: np.ndarray):
     """Move each kept region's edges to the most likely start and resume lines nearby."""
     placed = {}
@@ -65,7 +78,7 @@ def place(kept: dict[str, list[tuple[int, int]]], rows, p_start: np.ndarray, p_e
             b0, b1 = max(start + 1, hi - TAIL), min(len(r), hi + AFTER + 1)
             end = b0 + int(np.argmax(pe[b0:b1])) if b1 > b0 else hi
             placed.setdefault(vid, []).append((start, max(end, start + 1)))
-    return placed
+    return {vid: merged(spans) for vid, spans in placed.items()}
 
 
 def qwen_placed(kept, edges_path: Path, rows):

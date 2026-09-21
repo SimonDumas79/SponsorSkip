@@ -90,6 +90,59 @@ marker alone 17%); one outlier video per set losing 130-170 s (garbled translate
 captions; a video *about* ads); and the worst-video rule, which must be a share of
 videos (as in `build_production.py`), not a maximum, once sets grow.
 
+### Short reads: diagnosed, and the obvious fixes measured (2026-09-21, `short_reads.py`)
+
+They are **missed, not cut short**: on CV, 30 of the 35 reads under 30 s are never
+touched by the context model at its threshold. The marker itself does score them
+(median peak 0.81 under 15 s, 0.98 at 15-30 s) but the context model, reading 15
+lines either side, averages a 4-10 line bump away (median peak 0.64 and 0.91,
+threshold 0.978). The edge heads are not the problem: they cut none of the found
+short reads and grew 4. Half the reads under 15 s are `selfpromo` one-liners.
+
+What stops the threshold from dropping is the **worst-video cap**, not the budget:
+at every threshold below 0.978 one video crosses 60 s, and it is a different video
+each step (a machine-translated Russian MMO video about the in-game store; a
+Windows 11 feature roundup with "partnership with 1Password"; an ASMR video). Those
+are genuine false positives, not label gaps, and none has a region over 64 s, so a
+region-length cap (180 / 240 s) or a share-of-video cap (35 / 50%) changes nothing.
+
+Measured on CV and NOT adopted, all inside the noise of 121 reads (one read = 0.8
+points) or worse:
+
+| lever | ad time / show lost (B = 10) | short reads (<15 s, 15-30 s) |
+|---|---|---|
+| shipped free tier | 44.5% / 4.9 s | 12%, 21% |
+| edge heads' inward reach capped by region length | 45.0% / 4.9 s | 12%, 21% |
+| context model with 3- and 7-line summaries added | 45.9% / 5.8 s | 12%, 25% |
+| context model weighted so each read counts once | 38.4% / 3.9 s | 17%, 25% |
+| both | 43.8% / 6.1 s | 23%, 30% |
+| edge heads' OUTWARD reach cut (20 -> 10 / 5 / 0 lines) | 36.7-42% / 3.2-4.9 s | worse |
+| translated-title videos left to SponsorBlock | 42.6% / 3.8 s | same |
+
+On the pooled 205-video set (280 reads, 80 short; `--pooled`, build_production's
+2%-share rule, B = 10) the same three context-model variants give: baseline 43.4%
+of ad time at 6.2 s with short reads at 5% / 20%; multi-scale 44.8% at 7.2 s;
+read-weighted 41.7% at 7.2 s with short reads at 21% / 32%; both 43.5% at 7.8 s
+with short reads at 21% / 34%. Read-weighting quadruples what short reads get,
+but pays for it in long reads and lost show: total ad time does not move.
+
+The heads' outward reach is what wins ad time on real reads; on a false region it
+widens the damage (44 s -> 144 s on the Windows video), and that is the price, not a
+bug. Cutting it loses far more than it saves.
+
+**Machine-translated caption tracks are a class of their own**: non-Latin titles are
+7 of 77 CV videos, 0 of 78 in holdout 1, 6 of 50 in holdout 2 and 4 of 10 in the
+first holdout 3. They hold the worst video in holdout 2 and every qwen system's
+cap-breaker in holdout 1. yt-dlp reports the spoken language (`%(language)s` = `ru`
+for bqtppv75MJg, and the `en` track's URL carries `tlang=`), so both fetchers now
+record `language`; the decision to fall back to SponsorBlock on non-English videos
+is Simon's, and the older caption files carry no field (the title's script is the
+proxy for them).
+
+Also fixed there: `edge_heads.place` merges overlapping placed spans, because two
+nearby regions often land on the same start line once moved (one video had the
+same span three times) and `predict.py` was sending each copy to the extension.
+
 **Grade on ad TIME, not just reads.** Region recall counts a read as found if one
 line of it is skipped, so a policy that skips a tight core looks excellent while
 most of each ad plays: measured 2026-09-21, a rule touching 82% of reads skipped
