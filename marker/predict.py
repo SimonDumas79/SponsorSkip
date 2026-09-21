@@ -204,6 +204,24 @@ def check() -> int:
     return 0
 
 
+def grade(bundles: list[Path], features: Path) -> int:
+    """Grade saved free-tier bundles, once, on a labelled set none of them trained on."""
+    rows = load(features)
+    cue_cols = [i for i, n in enumerate(rows.feature_names) if n.startswith("cue_")]
+    cues = (rows.X[:, cue_cols].sum(1) > 0).astype(np.float32)
+    print(f"{features.name}: {rows.videos} videos, {len(set(rows.channel))} channels, {rows.reads} reads")
+    print(HEADER)
+    print(row("cue patterns (no model)", grade_regions(regions_by_video(cues, rows, 0.5, 3), rows)))
+    for path in bundles:
+        tier = FreeTier(path)
+        kept = {}
+        for vid in np.unique(rows.video):
+            one = rows.subset(rows.video == vid)
+            kept[str(vid)] = tier.regions(one)
+        print(row(f"{path.name} (th {tier.threshold})", grade_regions(kept, rows)))
+    return 0
+
+
 def check_qwen(n_videos: int = 2) -> int:
     """Live qwen answers on a few holdout-2 videos must equal the recorded ones (temperature 0)."""
     import numpy as np
@@ -241,6 +259,9 @@ def main() -> int:
     run.add_argument("captions", type=Path, help="a caption file as fetch_captions.py / server/youtube.mjs write them")
     sub.add_parser("check")
     sub.add_parser("check-qwen")
+    grade_cmd = sub.add_parser("grade", help="grade saved bundles once on a labelled set none of them trained on")
+    grade_cmd.add_argument("--features", type=Path, required=True)
+    grade_cmd.add_argument("bundles", type=Path, nargs="+")
     serve = sub.add_parser("serve", help="read {videoID, channel, duration, lines:[{start,text}]} on stdin, "
                                          "write {segments} on stdout: how server/agents.mjs calls it")
     serve.add_argument("--tier", choices=["free", "qwen"], default="free")
@@ -259,6 +280,8 @@ def main() -> int:
         print()
     elif args.cmd == "check-qwen":
         return check_qwen()
+    elif args.cmd == "grade":
+        return grade(args.bundles, args.features)
     else:
         return check()
     return 0
