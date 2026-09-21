@@ -136,7 +136,20 @@ SponsorBlock), or a different signal. **The video description is that signal**,
 probed on 25 CV videos with sponsor reads (`descriptions_probe.json`): tokens taken
 from the description alone (link domains, the word after "code", capitalised names on
 link lines) land inside 33 of 44 reads, while only 20% of the caption lines they hit
-are inside a read, so it is a feature for the context model, not a rule. Not built.
+are inside a read, so it is a feature for the context model, not a rule.
+
+**Built and measured, not adopted** (`fetch_descriptions.py`, `add_descriptions.py`,
+`description_eval.py`; all 215 labelled videos' descriptions in `data/descriptions.json`,
+two columns `desc_hit_line` / `desc_hits_context` appended to every feature file, 71%
+line precision on the CV set with the tightened tokens in `features.description_tokens`).
+On the 77-video CV set the marker with the columns gave 45.9% of ad time at 3.6 s lost
+(shipped: 44.5% at 4.9 s, worst video 54 s -> 32 s). On the pooled 205-video set it did
+NOT replicate: 31.7% at 4.0 s against 43.6% at 6.2 s, because the 2%-share cap forced
+the threshold up (worst video 117 s); holdout 1's descriptions hit at only 44% line
+precision. The marker alone improved on both sets (34.5 -> 38.9%, 39.6 -> 42.2%), the
+system did not. The columns stay in the feature files for later experiments but the
+shipped marker ignores them: `experiments.kept_columns` uses the first 395 unless a
+config sets `use_description`.
 
 The heads' outward reach is what wins ad time on real reads; on a false region it
 widens the damage (44 s -> 144 s on the Windows video), and that is the price, not a

@@ -84,6 +84,52 @@ def cue_row(text: str) -> list[float]:
     return [1.0 if r.search(text) else 0.0 for r in CUE_RE.values()]
 
 
+# The video description names the sponsor nearly every time (a link, a code, "sponsored by ...").
+# Measured 2026-09-21 on 25 CV videos: tokens taken from the description ALONE land inside 33 of 44
+# reads, more than the free tier touches, and they reach the short reads the context model cannot
+# see. Only 20% of the caption lines they hit are inside a read, so this is a feature the model
+# weighs, never a rule that skips. Two columns per line: a hit on the line itself, and how many
+# distinct tokens the surrounding context mentions. Both stay 0 when there is no description.
+DESCRIPTION_COLUMNS = ["desc_hit_line", "desc_hits_context"]
+GENERIC_TOKENS = set("""youtube youtu twitter instagram tiktok facebook discord patreon twitch reddit spotify apple
+google amazon amzn linktr linktree bitly gmail email mailto paypal kofi ko-fi streamlabs merch store shop www
+http https code link links video videos channel subscribe playlist music gaming game games free official website
+support join follow download apps update news""".split())
+_NAMED_BY = re.compile(r"\b(?:sponsored by|thanks to|partnered with|in partnership with|brought to you by|"
+                       r"thank you to)\s+([A-Za-z][A-Za-z0-9]{2,})", re.I)
+_CODE = re.compile(r"\bcode\b\s*[:\-]?\s*[\"']?([A-Za-z0-9]{3,})", re.I)
+_DOMAIN = re.compile(r"https?://(?:www\.)?([a-z0-9-]{3,})\.", re.I)
+_PREFIXES = ("buy", "get", "try", "go", "use", "join", "visit", "my")
+
+
+def description_tokens(description: str | None) -> set[str]:
+    """Sponsor names from the description alone: link domains, the word after "code", the name after
+    "sponsored by", and a capitalised word that also appears in a link on the same line."""
+    toks: set[str] = set()
+    for line in (description or "").splitlines():
+        domains = [d.lower() for d in _DOMAIN.findall(line)]
+        for d in domains:
+            toks.add(d)
+            for p in _PREFIXES:   # buyraycon.com -> raycon, as it is spoken
+                if d.startswith(p) and len(d) - len(p) >= 4:
+                    toks.add(d[len(p):])
+        toks.update(m.lower() for m in _CODE.findall(line))
+        toks.update(m.lower() for m in _NAMED_BY.findall(line))
+        if domains:
+            for w in re.findall(r"\b[A-Z][A-Za-z0-9]{3,}\b", line):
+                if any(w.lower() in d for d in domains):
+                    toks.add(w.lower())
+    return {t for t in toks if len(t) >= 4 and t not in GENERIC_TOKENS and not t.isdigit()}
+
+
+def description_row(text: str, context: str, tokens: set[str]) -> list[float]:
+    if not tokens:
+        return [0.0, 0.0]
+    low_text, low_context = text.lower(), context.lower()
+    return [1.0 if any(t in low_text for t in tokens) else 0.0,
+            float(sum(1 for t in tokens if t in low_context))]
+
+
 def read_examples(path: Path) -> list[dict]:
     with path.open(encoding="utf-8") as f:
         return [json.loads(line) for line in f]
@@ -114,9 +160,12 @@ def block_mean(vectors: np.ndarray, lo: int, hi: int) -> np.ndarray:
     return (v / n).astype(np.float32) if n > 0 else v.astype(np.float32)
 
 
-def video_features(vectors: np.ndarray, rows: list[dict], duration: float) -> np.ndarray:
+def video_features(vectors: np.ndarray, rows: list[dict], duration: float,
+                   description: str | None = None) -> np.ndarray:
     """The full row of numbers for every caption line in one video."""
     n = len(rows)
+    tokens = description_tokens(description)
+    desc = np.array([description_row(r["text"], r["context"], tokens) for r in rows], dtype=np.float32)
     context = np.stack([block_mean(vectors, i - CONTEXT, i + CONTEXT + 1) for i in range(n)])
 
     # Relatedness: how much the meaning either side of each point disagrees.
@@ -138,7 +187,11 @@ def video_features(vectors: np.ndarray, rows: list[dict], duration: float) -> np
     minutes = np.array([[r["start"] / 60.0] for r in rows], dtype=np.float32)
     fraction = np.array([[r["start"] / duration if duration else 0.0] for r in rows], dtype=np.float32)
 
-    return np.hstack([context, seam[:, None], sharpest[:, None], distance[:, None], cues, minutes, fraction])
+    return np.hstack([context, seam[:, None], sharpest[:, None], distance[:, None], cues, minutes, fraction, desc])
+
+
+FEATURE_NAMES_TAIL = (["seam_here", "seam_sharpest_behind", "seam_distance_behind"]
+                      + [f"cue_{name}" for name in CUES] + ["minutes_in", "fraction_in"] + DESCRIPTION_COLUMNS)
 
 
 def main() -> int:
@@ -149,9 +202,12 @@ def main() -> int:
     ap.add_argument("--batch-size", type=int, default=128)
     ap.add_argument("--device", default=None, help="cuda or cpu; default picks cuda when present")
     ap.add_argument("--encoder", choices=sorted(ENCODERS), default="minilm")
+    ap.add_argument("--descriptions", type=Path, default=HERE / "data" / "descriptions.json",
+                    help="fetch_descriptions.py's file; a video with no entry gets zero description columns")
     args = ap.parse_args()
 
     name, what = ENCODERS[args.encoder]
+    descriptions = json.loads(args.descriptions.read_text(encoding="utf-8")) if args.descriptions.exists() else {}
 
     rows = read_examples(args.examples)
     by_video: dict[str, list[dict]] = {}
@@ -178,7 +234,8 @@ def main() -> int:
     for vid in order:
         vrows = sorted(by_video[vid], key=lambda r: r["i"])
         caps = json.loads((args.captions / f"{vid}.json").read_text(encoding="utf-8"))
-        X_parts.append(video_features(vectors[at : at + len(vrows)], vrows, caps.get("duration") or 0.0))
+        X_parts.append(video_features(vectors[at : at + len(vrows)], vrows, caps.get("duration") or 0.0,
+                                      descriptions.get(vid)))
         y_parts.append(np.array([r["label"] for r in vrows], dtype=np.int8))
         meta.extend((vid, r["i"], r["split"], r["is_start"], r["start"], r["channel_id"],
                      r.get("is_resume", 0), r.get("category", "sponsor" if r["label"] else "")) for r in vrows)
@@ -198,12 +255,7 @@ def main() -> int:
         channel=np.array([m[5] for m in meta]),
         is_resume=np.array([m[6] for m in meta], dtype=np.int8),   # first line after a read: an END label
         category=np.array([m[7] for m in meta]),                    # "sponsor", "selfpromo" or ""
-        feature_names=np.array(
-            [f"meaning_{i}" for i in range(vectors.shape[1])]
-            + ["seam_here", "seam_sharpest_behind", "seam_distance_behind"]
-            + [f"cue_{name}" for name in CUES]
-            + ["minutes_in", "fraction_in"]
-        ),
+        feature_names=np.array([f"meaning_{i}" for i in range(vectors.shape[1])] + FEATURE_NAMES_TAIL),
     )
     print(f"X {X.shape}  y {y.shape}  positives {int(y.sum()):,} ({100 * y.mean():.1f}%)")
     print(f"-> {args.out}")

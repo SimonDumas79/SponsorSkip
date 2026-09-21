@@ -72,7 +72,8 @@ LEADERBOARD = DATA / "experiments_leaderboard.md"
 ZOO = DATA / "zoo"
 FRONTIER = 0.01   # a candidate this close to the best fitness so far is worth keeping
 
-GROUPS = {"meaning": (0, 384), "seam": (384, 387), "cues": (387, 393), "position": (393, 395)}
+GROUPS = {"meaning": (0, 384), "seam": (384, 387), "cues": (387, 393), "position": (393, 395),
+          "description": (395, 397)}   # the last group exists only in rows built with descriptions
 
 BASE = {"epochs": 20, "lr": 1e-3, "weight_decay": 0.01, "batch": 256, "pos_scale": 1.0,
         "hidden": 0, "dropout": 0.0, "drop": [], "smooth": 3, "min_region": 1, "max_region": 0, "max_video": 0,
@@ -126,17 +127,23 @@ def describe(cfg: dict) -> str:
     return " ".join(diff) or "baseline"
 
 
-def kept_columns(cfg: dict) -> np.ndarray:
-    keep = np.ones(395, dtype=bool)
+SHIPPED_COLUMNS = 395   # the description columns (395-396) are opt-in: measured 2026-09-21, not adopted
+
+
+def kept_columns(cfg: dict, n_columns: int = SHIPPED_COLUMNS) -> np.ndarray:
+    """The 395 shipped columns minus the dropped groups; the description columns only with use_description."""
+    if not cfg.get("use_description"):
+        n_columns = min(n_columns, SHIPPED_COLUMNS)
+    keep = np.ones(n_columns, dtype=bool)
     for group in cfg["drop"]:
         lo, hi = GROUPS[group]
-        keep[lo:hi] = False
+        keep[lo:min(hi, n_columns)] = False
     return np.flatnonzero(keep)
 
 
-def branches(cfg: dict) -> list[np.ndarray]:
+def branches(cfg: dict, n_columns: int = 395) -> list[np.ndarray]:
     """The column sets trained as separate models: one set, or two when stacking."""
-    columns = kept_columns(cfg)
+    columns = kept_columns(cfg, n_columns)
     if not cfg.get("stack"):
         return [columns]
     meaning, rest = columns[columns < 384], columns[columns >= 384]
@@ -178,14 +185,15 @@ def cross_validate(cfg: dict, rows, seed: int, folds: int = 5) -> np.ndarray:
     for fold in np.array_split(channels, folds):
         test = np.isin(rows.channel, fold)
         logits = np.zeros(int(test.sum()), dtype=np.float32)
-        for columns in branches(cfg):
+        parts = branches(cfg, rows.X.shape[1])
+        for columns in parts:
             X = rows.X[:, columns]
             mean, std = scaling(X[~test])
             model = fit(cfg, (X[~test] - mean) / std, rows.y[~test], seed)
             with torch.no_grad():
                 scaled = torch.from_numpy((X[test] - mean) / std).float()
                 logits += model(scaled).squeeze(1).numpy()
-        oof[test] = 1.0 / (1.0 + np.exp(-logits / len(branches(cfg))))
+        oof[test] = 1.0 / (1.0 + np.exp(-logits / len(parts)))
     assert not np.isnan(oof).any()
     return oof
 
@@ -275,7 +283,7 @@ def evaluate(cfg: dict, rows, meta, seeds: tuple[int, ...]) -> tuple[dict, list[
 def fit_full(cfg: dict, rows, seed: int = 0) -> list[dict]:
     """Train every branch of a candidate on all of these rows; each part carries its own scaling."""
     parts = []
-    for columns in branches(cfg):
+    for columns in branches(cfg, rows.X.shape[1]):
         X = rows.X[:, columns]
         mean, std = scaling(X)
         parts.append({"columns": columns, "mean": mean, "std": std,
