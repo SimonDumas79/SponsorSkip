@@ -26,6 +26,7 @@ Gentle: when a game is running, the model and optimiser move off the GPU until i
 import argparse
 import ctypes
 import json
+from pathlib import Path
 import math
 import subprocess
 import sys
@@ -237,6 +238,9 @@ def main() -> int:
     ap.add_argument("--target", choices=["inside", "start", "resume"], default="inside",
                     help="inside a read (the recipe of record), or the soft start / resume line labels the edge heads use")
     ap.add_argument("--tag", default="", help="names the output: finetune_oof_<tag>_seed<seed>.npy (empty = the recipe of record)")
+    ap.add_argument("--score", nargs=2, metavar=("EXAMPLES", "FEATURES"),
+                    help="instead of cross-validating: train on ALL pooled videos and score a fresh set, given its "
+                         "examples .jsonl and feature .npz (for the row order); writes data/finetune_full_<tag>_seed<s>__<set>.npy")
     args = ap.parse_args()
     OPT.update(model=args.model, epochs=args.epochs, window=args.window, llrd=args.llrd, reinit=args.reinit,
                rdrop=args.rdrop)
@@ -254,6 +258,35 @@ def main() -> int:
     tok = AutoTokenizer.from_pretrained(OPT["model"])
     print(f"pooled: {rows.videos} videos, {len(rows):,} lines, {int(y.sum()):,} inside a read; "
           f"{OPT}, seed {args.seed}", flush=True)
+
+    if args.score:
+        ex_path, ft_path = (DATA / Path(a).name if not Path(a).exists() else Path(a) for a in args.score)
+        text = {}
+        with open(ex_path, encoding="utf-8") as f:
+            for ln in f:
+                if ln.strip():
+                    r = json.loads(ln)
+                    text[(r["videoID"], r["i"])] = r["text"]
+        d = np.load(ft_path)
+        fresh_video = d["video"]
+        fresh_texts = [text[(str(v), int(i))] for v, i in zip(d["video"], d["line"])]
+
+        class _R:   # just what pairs() reads
+            video = fresh_video
+
+            def __len__(self):
+                return len(fresh_video)
+        fresh = pairs(_R(), fresh_texts)
+        all_data = data + fresh
+        all_y = np.concatenate([y, np.zeros(len(fresh), np.float32)])
+        n = len(data)
+        print(f"  training on all {n:,} pooled lines, scoring {len(fresh):,} lines of {ft_path.name}", flush=True)
+        scores = train_fold(np.arange(n), np.arange(n, n + len(fresh)), all_data, all_y, tok, device, args.seed)
+        name = ft_path.stem.replace("features_", "")
+        out = DATA / f"finetune_full_{args.tag or 'recipe'}_seed{args.seed}__{name}.npy"
+        np.save(out, scores)
+        print(f"-> {out}", flush=True)
+        return 0
 
     channels = np.array(sorted(set(rows.channel)))
     np.random.default_rng(0).shuffle(channels)   # the same folds as experiments.cross_validate(seed=0)
