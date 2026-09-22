@@ -13,6 +13,7 @@ Output: data/descriptions.json  {videoID: description or null}
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import time
@@ -23,14 +24,16 @@ import numpy as np
 HERE = Path(__file__).parent
 DATA = HERE / "data"
 OUT = DATA / "descriptions.json"
-SETS = ("features.npz", "features_tail.npz", "features_holdout2.npz", "features_holdout3.npz")
+SETS = ("features.npz", "features_tail.npz", "features_holdout2.npz", "features_holdout3.npz",
+        "features_channels.npz")
 FLAGS = subprocess.BELOW_NORMAL_PRIORITY_CLASS | subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 
 
 def fetch(video_id: str) -> str | None:
     p = subprocess.run([sys.executable, "-m", "yt_dlp", "--skip-download", "--no-warnings", "--quiet",
                         "--print", "%(description)s", f"https://www.youtube.com/watch?v={video_id}"],
-                       capture_output=True, text=True, encoding="utf-8", timeout=90, creationflags=FLAGS)
+                       capture_output=True, text=True, encoding="utf-8", timeout=90, creationflags=FLAGS,
+                       env={**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"})
     if p.returncode != 0:
         err = (p.stderr or "").strip()
         if "429" in err or "Too Many Requests" in err:
@@ -54,7 +57,9 @@ def main() -> int:
     if probe.exists():
         for k, v in json.loads(probe.read_text(encoding="utf-8")).items():
             got.setdefault(k, v)
-    todo = [v for v in dict.fromkeys(videos) if v not in got]
+    # a None is a failed fetch, retried: on 2026-09-22 100 of 169 were lost to yt-dlp writing cp1252 into a
+    # pipe read as UTF-8, and the decode error happened in subprocess's reader thread, so nothing failed loudly
+    todo = [v for v in dict.fromkeys(videos) if got.get(v) is None]
     print(f"{len(dict.fromkeys(videos))} videos, {len(got)} already fetched, {len(todo)} to fetch", flush=True)
     for n, vid in enumerate(todo, 1):
         try:

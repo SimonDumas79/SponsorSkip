@@ -8,6 +8,7 @@ Idempotent: a file that already has the columns is recomputed in place, not doub
 """
 
 import json
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -17,13 +18,15 @@ from features import DESCRIPTION_COLUMNS, description_row, description_tokens
 HERE = Path(__file__).parent
 DATA = HERE / "data"
 PAIRS = {"features.npz": "examples.jsonl", "features_tail.npz": "examples_tail.jsonl",
-         "features_holdout2.npz": "examples_holdout2.jsonl", "features_holdout3.npz": "examples_holdout3.jsonl"}
+         "features_holdout2.npz": "examples_holdout2.jsonl", "features_holdout3.npz": "examples_holdout3.jsonl",
+         "features_channels.npz": "examples_channels.jsonl"}
 
 
 def main() -> int:
+    only = set(sys.argv[1:])   # optional: feature file names to limit the run to
     descriptions = json.loads((DATA / "descriptions.json").read_text(encoding="utf-8"))
     for feats, examples in PAIRS.items():
-        if not (DATA / feats).exists():
+        if not (DATA / feats).exists() or (only and feats not in only):
             continue
         d = dict(np.load(DATA / feats, allow_pickle=False))
         text = {}
