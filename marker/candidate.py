@@ -45,7 +45,7 @@ if sys.platform == "win32":
 torch.set_num_threads(8)
 POTION = {"features.npz": "features_potion_cv.npz", "features_tail.npz": "features_potion_tail.npz",
           "features_holdout2.npz": "features_potion_holdout2.npz", "features_channels.npz": "features_potion_channels.npz",
-          "features_holdout4.npz": "features_potion_holdout4.npz"}
+          "features_holdout4.npz": "features_potion_holdout4.npz", "features_negatives.npz": "features_potion_negatives.npz"}
 PROMO_TITLE = re.compile(r"\b(sponsor\w*|ad|ads|advert\w*|promo\w*|brought to you|partner\w*|thanks to|merch|patreon)\b", re.I)
 SEQ = dict(hidden=32, reach=7, epochs=12)
 
@@ -111,6 +111,17 @@ def chapter_regions(kept: dict, T: Rows, meta: dict) -> dict:
 
 
 def report(name: str, kept: dict, T: Rows, lang: dict | None = None) -> None:
+    if T.y.sum() == 0:   # a sponsor-free set: every skipped second is lost show
+        lost = []
+        for v in np.unique(T.video):
+            r = np.flatnonzero(T.video == v)
+            s = T.start_seconds[r]
+            sec = np.diff(np.append(s, s[-1] + LAST_LINE_SECONDS))
+            lost.append(sum(float(sec[lo:hi].sum()) for lo, hi in kept.get(str(v), [])))
+        x = np.array(lost)
+        print(f"  {name:<44} no skip {np.mean(x == 0):5.0%}  mean {x.mean():4.1f} s  >10 s {np.mean(x > 10):4.0%}  "
+              f">60 s {np.mean(x > 60):4.0%}  ({len(x)} sponsor-free videos)", flush=True)
+        return
     g = grade_regions(kept, T)
     idx = {str(v): np.flatnonzero(T.video == v) for v in np.unique(T.video)}
     false = sum(1 for v, spans in kept.items() for lo, hi in spans if not T.y[idx[v]][lo:hi].any())
@@ -186,6 +197,9 @@ def main() -> int:
         meta = json.loads((DATA / "watch_meta.json").read_text(encoding="utf-8")) if (DATA / "watch_meta.json").exists() else {}
         lang_path = DATA / "video_language.json"
         lang = json.loads(lang_path.read_text(encoding="utf-8")) if lang_path.exists() else None
+        if lang is not None:   # sets crawled after video_language.json: fall back to the caption file's language
+            for v in np.unique(T.video):
+                lang.setdefault(str(v), {"lang": None})
         print(f"FRESH SET {args.fresh}: {T.videos} videos, {T.reads} reads, "
               f"{len(set(T.channel))} channels; none of them in the pooled training data")
         assert not set(T.channel) & set(P.channel), "fresh set shares channels with the pooled data"
