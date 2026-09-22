@@ -462,6 +462,12 @@ With chapters and in English scope (three BGE seeds): + creator chapters 47.3-50
 58.2-60.0% (B = 10): +1.2 to +1.3 points at B = 10 in every seed, mixed at B = 5 (chapter spans
 spend lost-show budget). Graded on English videos only: 51.4-53.9% / 59.3-63.2%.
 
+Which detectors still earn their place with BGE in (`bge_ablation.py`, BGE seeds 0 / 1, B = 5 / B = 10):
+BGE alone 41.4 / 56.0% and 42.9 / 48.0%; marker + BGE 46.4 / 50.0% and 48.3 / 53.2%; marker + meaning
++ structure + BGE (one frozen encoder + BGE) 47.5 / 56.1% and 49.9 / 58.3%; all six 52.1 / 58.7% and
+48.1 / 57.3%. All six stay for accuracy; dropping potion and the conv model is the cheaper build,
+at roughly 2-4 points.
+
 ### Fine-tuned BGE start/resume models: more precise starts (2026-09-22, `edge_ft_eval.py`)
 
 `finetune_minilm.py --target start|resume --model BAAI/bge-small-en-v1.5` trains BGE on the same soft
