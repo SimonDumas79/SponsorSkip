@@ -329,6 +329,17 @@ Scoring each (start, end) pair together, with the region's interior evidence wei
 and TAU chosen by the rule, picked ALPHA = 0 every time: identical to the separate start/end
 models on the shipped tier (41.7%) and within 0.1 point on the stack (49.8 vs 49.7%).
 
+### The island filter: real signal, no gain at the chosen thresholds (2026-09-22, `island_check.py`)
+
+Skipping a region only when it is unlike its closer side (cutoff chosen with the threshold by the
+rule): shipped tier 38.4 -> 38.4% (B = 5), no cutoff helps at B = 10; 5-detector stack +0.9 / +0.7
+points (inside noise); stack + fine-tuned MiniLM (both seeds): no cutoff helps. It removes at most
+one false-alarm region. The 75% separation was measured at a loose threshold; the false alarms left
+at the rule's threshold are the ones it cannot tell apart. Not adopted as a filter.
+
+Joint pairs on stack + fine-tuned: +1.7 at B = 5 (ALPHA 0.1, TAU 2, the best of 21 settings) and
+nothing at B = 10; read as selection noise. Not adopted.
+
 ## Notes worth keeping
 
 - **SponsorBlock's CSV dumps are switched off** (bandwidth); the hash-prefix API
