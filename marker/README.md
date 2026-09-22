@@ -927,6 +927,33 @@ not in confusion.
 was concluded from aggregate numbers alone, with a reasoning flag left off by inheritance and not one
 transcript read. Two points of ad time were sitting behind that assumption.
 
+### Reasoning on the line-number question too (2026-09-22 evening, `local_edges.py --same-prompt --think`)
+
+Simon's question: what about reasoning WITHOUT the walk? The line-number path (`qwen_edges.ask_edges`)
+had only ever run with `think: False`. Same 93 regions, Claude's prompt, reasoning on, a trace of every
+answer in `data/local_edges_trace_holdout4_sameprompt_think_B10.jsonl`. 44 min on the 3080, 4 workers.
+
+The script's own table falls back to OUR EDGE HEADS whenever qwen's answer is missing or outside the
+trust window, which happened on 29 of 93 regions (8 calls timed out, 21 answers out of window). So the
+first row mixes qwen with the heads. The second pair falls back to the raw region instead, which
+isolates what qwen placed itself:
+
+| qwen3:8b, line-number question, holdout 4 (dev) | ad time | show lost | over 60 s | reads fully covered |
+|---|---|---|---|---|
+| reasoning on, heads fill the gaps | 66.9% | 3.3 s | 0.0% | 32% |
+| reasoning off, heads fill the gaps | 62.6% | 3.3 s | 0.0% | 26% |
+| **reasoning on, qwen's own answers only** (64 taken) | **63.1%** | **2.9 s** | 0.0% | 26% |
+| reasoning off, qwen's own answers only (60 taken) | 57.5% | 2.7 s | 0.0% | 19% |
+| average of qwen (reasoning on) and our heads | 69.2% | 7.8 s | 4.7% | 40% |
+| our averaged edge heads | 68.4% | 7.9 s | 0.0% | 38% |
+
+**Reasoning is worth +5.6 points of ad time on qwen's own placements** at 0.2 s more show lost -- a
+bigger gain than on the walk. It still does not reach our own heads (63.1% against 68.4%): qwen with
+reasoning is a precise but timid placer, cutting less show than anything else measured and leaving
+more of each read playing. The average with the heads edges past them on both axes by noise-sized
+margins and breaks the 60 s cap on 3 videos, so it is not a win either. **Not adopted.** The local
+model is still not an edge placer that beats the free tier; it is a lower-show-lost trade.
+
 ### The measured system was never the shipped system (2026-09-22, `export_candidate.py`, `serve_candidate.py`)
 
 Two days of gains lived only in evaluation code. `candidate.py` refits the six detectors on all

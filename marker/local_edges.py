@@ -45,7 +45,7 @@ from candidate import POTION, report
 from cascade import ASK as CLAUDE_ASK, parts
 from confirm_check import MODEL as OLLAMA_MODEL, OLLAMA, SCHEMA
 from edge_heads import AFTER, BEFORE, INSIDE, TAIL, place
-from qwen_edges import edge_window
+from qwen_edges import SCHEMA as EDGE_SCHEMA, edge_window
 from replay import regions_by_video
 from train import DATA
 
@@ -93,6 +93,25 @@ def ask_bool_thinking(prompt: str, timeout: float = 180.0):
         with urllib.request.urlopen(req, timeout=timeout) as r:
             msg = json.load(r)["message"]
             return bool(json.loads(msg["content"])["promo"]), (msg.get("thinking") or "")[:600]
+    except (urllib.error.URLError, KeyError, ValueError, TimeoutError):
+        return None, None
+
+
+def ask_edges_thinking(prompt: str, timeout: float = 600.0):
+    """Like qwen_edges.ask_edges (the line-number question), but with reasoning ON. That path had
+    only ever run with think=False; --think reached the walk alone. Returns (answer dict, reasoning
+    text). Wider context than ask_edges, because the reasoning shares it with the window.
+    """
+    body = json.dumps({
+        "model": OLLAMA_MODEL, "stream": False, "think": True, "format": EDGE_SCHEMA, "keep_alive": "300s",
+        "options": {"num_ctx": 16384, "temperature": 0},
+        "messages": [{"role": "user", "content": prompt}],
+    }).encode()
+    req = urllib.request.Request(f"{OLLAMA}/api/chat", data=body, headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            msg = json.load(r)["message"]
+            return json.loads(msg["content"]), (msg.get("thinking") or "")[:1500]
     except (urllib.error.URLError, KeyError, ValueError, TimeoutError):
         return None, None
 
@@ -161,7 +180,8 @@ def main() -> int:
                          "before the ad started -- the show's actual topic at the moment it was "
                          "interrupted, which a long or multi-part video's title may not describe")
     ap.add_argument("--think", action="store_true",
-                    help="let the walk's yes/no calls reason before answering (think=True), instead "
+                    help="let the model reason before answering (think=True) -- the walk's yes/no calls, or the "
+                         "line-number question with --same-prompt -- instead "
                          "of the setting confirm_check.ask_bool uses for cheaper region confirmation. "
                          "Writes a trace of every question and answer, so a run can be READ, not only "
                          "graded.")
@@ -269,7 +289,15 @@ def main() -> int:
             wlo, _, text = edge_window(lines, lo, hi)
             with lock:
                 calls[0] += 1
-            a = ask_edges(CLAUDE_ASK + "\n\n" + text)
+            if args.think:
+                a, reasoning = ask_edges_thinking(CLAUDE_ASK + "\n\n" + text)
+                if trace_f:
+                    with lock:
+                        trace_f.write(json.dumps({"video": vid, "region": [lo, hi], "wlo": wlo,
+                                                  "reasoning": reasoning, "answer": a}) + "\n")
+                        trace_f.flush()
+            else:
+                a = ask_edges(CLAUDE_ASK + "\n\n" + text)
             span = back
             if isinstance(a, dict) and a.get("start_line") is not None and a.get("end_line") is not None:
                 s0 = min(max(int(wlo) + int(a["start_line"]), 0), n - 1)
