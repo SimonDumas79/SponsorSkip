@@ -64,3 +64,26 @@ Caveats, as registered: 3 channels, so this rules out gross overfitting and does
 generalises. The chapter result is channel-specific: all three creators title their sponsor
 segments, so chapters nearly solve these channels; most channels do not (20 of 280 pooled reads had
 such a chapter). The next test is the many-channel SponsorBlock tail crawl.
+
+---
+
+# Pre-registration 2: the many-channel test (written 2026-09-22 ~07:05, before the videos are crawled)
+
+**Set ("holdout 4").** Every video the resumed SponsorBlock-tail crawl fetches (`fetch_captions.py
+--limit 180`, from `candidates.json`) whose channel is in NONE of `examples.jsonl`,
+`examples_tail.jsonl`, `examples_holdout2.jsonl`, `examples_holdout3.jsonl`, `examples_channels.jsonl`.
+Built with `build_dataset.py --captions marker/data/captions --all-to holdout4 --keep-selfpromo-only
+--not-in` all five. Expected: ~100+ videos from as many channels.
+
+**System.** Exactly the candidate above: same six detectors trained on all 205 pooled videos, the
+fine-tuned BGE-small seed 0 (a fresh `--score` run on this set), the same context model and edge
+heads, **the same thresholds: B = 5 0.9951, B = 10 0.9870**. Two variants reported: plus creator
+chapters (fetched with `fetch_watch_meta.py`), and English videos only.
+
+**Baselines.** `free_tier.pt` (shipped) and `free_tier_pooled.pt`, via `predict.py grade`; the
+community SponsorBlock model (`sponsorblock_ml.py`) at its default 0.5 classifier cut, if it has
+been run on these videos (it was trained on SponsorBlock data up to early 2022, so any of these
+videos older than that may be in its training set: reported, not hidden).
+
+**Pass.** The candidate skips more ad time than `free_tier.pt` at both budgets, show lost per video
+within 3 s of its pooled-CV figure, at most 2% of videos over 60 s. Graded once.
