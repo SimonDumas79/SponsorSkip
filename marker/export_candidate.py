@@ -165,6 +165,81 @@ def build() -> int:
     return 0
 
 
+def add_v3() -> int:
+    """Add candidate v3 to the saved bundle: a context model that also reads the community model.
+
+    The same fit candidate.py --sbml grades: the six pooled out-of-fold streams plus the community
+    model's line score, trained ONLY on the pooled videos whose SponsorBlock labels postdate that
+    model's training (it was trained on SponsorBlock up to early 2022, so it may have seen the rest).
+    Thresholds from that model's own out-of-fold scores (stack_sbml.py), never re-chosen here.
+    """
+    import datetime
+    import json
+
+    from sbml_eval import load_preds
+    from stack_sbml import sbml_stream
+
+    rows, _, _ = pooled()
+    level1, _, p_start, p_end = np.load(DATA / "pooled_oof.npy")
+    bake = dict(np.load(CACHE))
+    fs_oof = np.load(DATA / "finetune_oof_edge_start_seed0.npy")
+    fe_oof = np.load(DATA / "finetune_oof_edge_resume_seed0.npy")
+    streams_oof = {"marker": level1, "meaning": bake["meaning"], "structure": bake["structure"],
+                   "potion": bake["potion"], "sequence": np.load(DATA / "sequence_oof_h32_r7.npy"),
+                   "bge": np.load(DATA / "finetune_oof_bge_seed0.npy")}
+    names = [str(n) for n in rows.feature_names]
+    extra_cols = [i for i, n in enumerate(names) if n.startswith("cue_") or n.startswith("desc_")]
+    d = json.load(open(DATA / "sb_dates.json"))
+    cutoff = datetime.datetime(2022, 4, 1).timestamp() * 1000
+    unseen = np.array([not (d.get(str(v), {}).get("first") and d[str(v)]["first"] < cutoff) for v in rows.video])
+    U = Rows(rows.X[unseen], rows.y[unseen], rows.video[unseen], rows.channel[unseen],
+             rows.start_seconds[unseen], rows.split[unseen], rows.feature_names)
+    sb = sbml_stream(rows, load_preds())
+    FU = np.column_stack([context_features(U, streams_oof[k][unseen]) for k in ORDER]
+                         + [context_features(U, sb[unseen]), U.X[:, extra_cols]])
+    print(f"v3 context model: {U.videos} pooled videos after the community model's training, "
+          f"{FU.shape[1]} features", flush=True)
+    ctx3 = fit_stage2(FU, U.y.astype(np.float32), hidden=32, seed=0)
+    oof3 = np.load(DATA / "stack_sbml_oof_s0.npy")[1]
+    g3 = graded(sweep_fine(oof3, U, ((p_start + fs_oof) / 2)[unseen], ((p_end + fe_oof) / 2)[unseen]), U)
+    th3 = {b: float(pick(g3, b)[0]) for b in (5, 10)}
+    print(f"v3 thresholds from its CV: B=5 {th3[5]:.4f}, B=10 {th3[10]:.4f}", flush=True)
+    b = torch.load(OUT, weights_only=False)
+    b["v3"] = {"context": stage_state(ctx3), "context_inputs": FU.shape[1], "thresholds": th3}
+    torch.save(b, OUT)
+    print(f"saved v3 into {OUT}")
+    return 0
+
+
+def verify_v3(which: str) -> int:
+    """Score a fresh set through the bundle's v3 and print it next to the recorded grade."""
+    import json
+
+    from candidate import chapter_regions
+    from sbml_eval import load_preds
+    from serve_candidate import Candidate
+    from stack_sbml import sbml_stream
+    fresh = f"features_{which}.npz"
+    T = load(DATA / fresh)
+    potT = np.load(DATA / POTION[fresh])["X"]
+    potT = potT[:, :potT.shape[1] - 2]
+    bge_T = np.load(DATA / f"finetune_full_bge_seed0__{which}.npy")
+    fs_T = np.load(DATA / f"finetune_full_edge_start_seed0__{which}.npy")
+    fe_T = np.load(DATA / f"finetune_full_edge_resume_seed0__{which}.npy")
+    c = Candidate(OUT)
+    st = {**c.streams(T, potT, bge_T), "sbml": sbml_stream(T, load_preds())}
+    ctx3, ps, pe = c.score_v3(T, st)
+    meta = json.loads((DATA / "watch_meta.json").read_text(encoding="utf-8")) if (DATA / "watch_meta.json").exists() else {}
+    print(f"{fresh}: {T.videos} videos, {T.reads} reads -- v3 scored through {OUT.name}\n")
+    for b in (5, 10):
+        kept = place(regions_by_video(ctx3, T, c.v3["thresholds"][b], 1), T, (ps + fs_T) / 2, (pe + fe_T) / 2)
+        report(f"B={b:>2} bundle v3", kept, T)
+        if meta:
+            report(f"B={b:>2}   + creator chapters", chapter_regions(kept, T, meta), T)
+    print("\nthe graded v3 at B=10 + chapters on holdout 4: 67.2% of ad time, 5.5 s lost, none over 60 s")
+    return 0
+
+
 def verify(which: str) -> int:
     """Score a fresh set through the SAVED bundle and check it against the recorded grade."""
     from serve_candidate import Candidate
@@ -238,7 +313,14 @@ def main() -> int:
     ap.add_argument("--verify", metavar="SET", help="a fresh set name, e.g. holdout4")
     ap.add_argument("--from-checkpoints", metavar="SET",
                     help="the same grade with the fine-tuned streams recomputed by the saved checkpoints")
+    ap.add_argument("--add-v3", action="store_true",
+                    help="add candidate v3 (+ the community model) to the saved bundle")
+    ap.add_argument("--verify-v3", metavar="SET", help="score a fresh set through the bundle's v3")
     args = ap.parse_args()
+    if args.add_v3:
+        return add_v3()
+    if args.verify_v3:
+        return verify_v3(args.verify_v3)
     if args.from_checkpoints:
         return from_checkpoints(args.from_checkpoints)
     return verify(args.verify) if args.verify else build()

@@ -57,6 +57,11 @@ class Candidate:
         self.start = stage_from(b["stages"]["start"], b["edge_inputs"])
         self.end = stage_from(b["stages"]["end"], b["edge_inputs"])
         self.fine_tuned = b.get("fine_tuned", {})
+        # v3: the same six plus the community SponsorBlock model, one more context model over all seven.
+        self.v3 = None
+        if "v3" in b:
+            self.v3 = {"context": stage_from(b["v3"]["context"], b["v3"]["context_inputs"]),
+                       "thresholds": {int(k): float(v) for k, v in b["v3"]["thresholds"].items()}}
         self.gate = b.get("gate")
         self.device = device
         self._bge = None
@@ -152,6 +157,13 @@ class Candidate:
         E = context_features(rows, st["marker"])
         return self.context(F), self.start(E), self.end(E)
 
+    def score_v3(self, rows, st: dict):
+        """v3: the six streams plus st["sbml"], the community model's line score."""
+        F = np.column_stack([context_features(rows, st[k]) for k in self.order]
+                            + [context_features(rows, st["sbml"]), rows.X[:, self.extra_cols]])
+        E = context_features(rows, st["marker"])
+        return self.v3["context"](F), self.start(E), self.end(E)
+
 
 class CandidateTier(Candidate):
     """Captions in, segments out: the candidate as the extension would call it.
@@ -162,9 +174,15 @@ class CandidateTier(Candidate):
     """
 
     def __init__(self, path=DEFAULT, device: str | None = "cpu", budget: int = 10, v2: bool = True,
-                 gated: bool = True, edges_with: str | None = None):
+                 gated: bool = True, edges_with: str | None = None, v3: bool = False):
         super().__init__(path, device)
         self.budget, self.v2 = budget, v2
+        # v3 = v2 + the community SponsorBlock model as a seventh detector (about a minute of CPU on a
+        # 35-minute video). Needs the bundle's "v3" entry (export_candidate.py --add-v3).
+        if v3 and self.v3 is None:
+            raise SystemExit("this bundle has no v3; run marker/export_candidate.py --add-v3")
+        self.use_v3 = v3
+        self._community = None
         self.gated = gated and bool(self.gate)
         # None keeps our own edge heads; "haiku"/"sonnet" asks Claude; "local" asks the GPU model.
         self.edges_with = edges_with
@@ -211,13 +229,21 @@ class CandidateTier(Candidate):
         mask = self.gate_mask(cheap, rows) if self.gated else None
         neutral = float(self.gate["neutral"]) if self.gated else 0.0
         bge = self.ft_stream("bge", texts, rows.video, mask, neutral)
-        ctx, ps, pe = self.score_from(rows, {**cheap, "bge": bge})
-        if self.v2:
+        if self.use_v3:
+            from stack_sbml import sbml_stream
+            if self._community is None:
+                from sponsorblock_ml import LivePredictor
+                self._community = LivePredictor("cpu")
+            preds = {str(caps["videoID"]): self._community(caps)}
+            ctx, ps, pe = self.score_v3(rows, {**cheap, "bge": bge, "sbml": sbml_stream(rows, preds)})
+        else:
+            ctx, ps, pe = self.score_from(rows, {**cheap, "bge": bge})
+        if self.v2 or self.use_v3:
             ns = float(self.gate.get("neutral_start", 0.0)) if self.gated else 0.0
             ne = float(self.gate.get("neutral_end", 0.0)) if self.gated else 0.0
             ps = (ps + self.ft_stream("edge_start", texts, rows.video, mask, ns)) / 2
             pe = (pe + self.ft_stream("edge_resume", texts, rows.video, mask, ne)) / 2
-            th = self.thresholds_v2[self.budget]
+            th = self.v3["thresholds"][self.budget] if self.use_v3 else self.thresholds_v2[self.budget]
         else:
             th = self.thresholds[self.budget]
         found = regions_by_video(ctx, rows, th, 1)
@@ -307,7 +333,7 @@ class CandidateTier(Candidate):
                 for a, b in spans]
 
 
-def check(which: str, limit: int) -> int:
+def check(which: str, limit: int, v3: bool = False) -> int:
     """The live path against the evaluator: captions in, and the same regions out.
 
     export_candidate.py --verify proves the bundle reproduces the grade from FEATURE FILES. This
@@ -347,7 +373,7 @@ def check(which: str, limit: int) -> int:
                 rows.start_seconds[keep], rows.split[keep], rows.feature_names)
     pot = pot[keep]
     texts = [t for t, k in zip(texts, keep) if k]
-    tier = CandidateTier(OUT, device="cpu")
+    tier = CandidateTier(OUT, device="cpu", v3=v3)
     # The offline side is gated exactly as serving is. Comparing a gated live path against an
     # ungated offline one would report a difference that is the gate, not a bug in the path.
     cheap = tier.cheap_streams(rows, pot)
@@ -359,11 +385,20 @@ def check(which: str, limit: int) -> int:
     bge = tier.ft_stream("bge", texts, rows.video, mask, neutral)
     fs = tier.ft_stream("edge_start", texts, rows.video, mask, ns)
     fe = tier.ft_stream("edge_resume", texts, rows.video, mask, ne)
-    ctx, ps, pe = tier.score_from(rows, {**cheap, "bge": bge})
+    if v3:
+        # Offline, the community model's RECORDED predictions (GPU, sbml_predictions.jsonl); live, it
+        # runs again on the CPU. A difference here is that model's own drift between devices.
+        from sbml_eval import load_preds
+        from stack_sbml import sbml_stream
+        ctx, ps, pe = tier.score_v3(rows, {**cheap, "bge": bge, "sbml": sbml_stream(rows, load_preds())})
+        th = tier.v3["thresholds"][tier.budget]
+    else:
+        ctx, ps, pe = tier.score_from(rows, {**cheap, "bge": bge})
+        th = tier.thresholds_v2[tier.budget]
     share = 1.0 if mask is None else float(mask.mean())
     print(f"  the fine-tuned models read {share:.0%} of lines", flush=True)
     print(flush=True)
-    offline = place(regions_by_video(ctx, rows, tier.thresholds_v2[tier.budget], 1), rows,
+    offline = place(regions_by_video(ctx, rows, th, 1), rows,
                     (ps + fs) / 2, (pe + fe) / 2)
 
     vids = wanted
@@ -401,5 +436,6 @@ if __name__ == "__main__":
     ap.add_argument("cmd", choices=["check"])
     ap.add_argument("set", nargs="?", default="holdout4")
     ap.add_argument("--limit", type=int, default=6)
+    ap.add_argument("--v3", action="store_true", help="check candidate v3 (with the community model)")
     a = ap.parse_args()
-    raise SystemExit(check(a.set, a.limit))
+    raise SystemExit(check(a.set, a.limit, a.v3))

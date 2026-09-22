@@ -84,6 +84,37 @@ def words_of(caps: dict) -> list[dict]:
     return words
 
 
+class LivePredictor:
+    """The community model on ONE video, as serving calls it: candidate v3's seventh detector.
+
+    Loads both models once. CPU by default, like the rest of the serving path (the extension must not
+    fight a game for the card). Returns the same records main() writes to sbml_predictions.jsonl, so
+    stack_sbml.sbml_stream turns them into a line score exactly as in the graded runs.
+    """
+
+    def __init__(self, device: str = "cpu"):
+        self.predict, self.preprocess, self.segment = import_their_code()
+        self.device = device
+        self.tok = AutoTokenizer.from_pretrained(T5)
+        self.model = AutoModelForSeq2SeqLM.from_pretrained(T5).to(device).eval()
+        self.ctok = AutoTokenizer.from_pretrained(CLASSIFIER)
+        self.clf = AutoModelForSequenceClassification.from_pretrained(CLASSIFIER).to(device).eval()
+        self.labels = [self.clf.config.id2label[i].lower() for i in range(self.clf.config.num_labels)]
+
+    def __call__(self, caps: dict) -> list[dict]:
+        vid = str(caps["videoID"])
+        with torch.no_grad():
+            preds = self.predict.predict(vid, self.model, self.tok, self.segment.SegmentationArguments(),
+                                         words=words_of(caps))
+            texts = [self.preprocess.clean_text(" ".join(w["text"] for w in p["words"])) for p in preds]
+            probs = []
+            for i in range(0, len(texts), 32):
+                enc = self.ctok(texts[i:i + 32], truncation=True, padding=True, return_tensors="pt").to(self.device)
+                probs += torch.softmax(self.clf(**enc).logits.float(), -1).cpu().tolist()
+        return [{"video": vid, "start": p["start"], "end": p["end"], "probs": dict(zip(self.labels, pr))}
+                for p, pr in zip(preds, probs)]
+
+
 def game_running() -> bool:
     import subprocess
     try:
