@@ -510,6 +510,9 @@ On the BGE stack (three stack seeds, one fine-tuned edge seed), averaging the ML
 fine-tuned start/resume models: B = 10 62.0 / 62.4 / 61.8% against 58.7 / 57.3 / 57.0% (+3.3 to +5.1 in
 every seed), median start error 3.7-3.8 s -> 2.2-2.5 s; B = 5 mixed (49.6 / 50.3 / 51.0 against
 52.1 / 48.1 / 49.3). Pre-registered as candidate v2 for holdout 4.
+A second edge seed confirms it: with edge seed 1 the same three BGE stacks give 50.0-51.5% (B = 5)
+and 59.7-63.0% (B = 10), the same band as edge seed 0. The averaged heads do not depend on one
+lucky edge model.
 
 ### The community SponsorBlock model on our videos (2026-09-22, `sponsorblock_ml.py`, `sbml_eval.py`)
 
