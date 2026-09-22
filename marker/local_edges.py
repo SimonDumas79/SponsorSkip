@@ -59,6 +59,18 @@ The advertisement includes the host's turn into it ("but first", "this video is 
 
 Answer ONLY with JSON: {"promo": true} if the marked lines are still the advertisement, {"promo": false} if they are the show."""
 
+# Simon's diagnosis, 2026-09-22: the walk asks "is this still the show" without ever telling the
+# model what the show IS. A generic transitional line ("so yeah, anyway") gives it nothing to check
+# resumption against. This grounds the question in the video's actual subject: the title, and (in the
+# --anchor-lines variant) a sample of the show's own voice from well before the ad.
+WALK_ASK_ANCHORED = """These numbered caption lines come from the middle of a YouTube video titled "{title}".
+
+An advertisement that the host reads for a sponsor is running nearby. Look ONLY at the lines marked >>> and answer one question about them: do they belong to the video's actual subject -- what the title describes -- or are they still the advertisement?
+
+The advertisement includes the host's turn into it ("but first", "this video is sponsored by") and everything until the host returns to that subject.
+{extra}
+Answer ONLY with JSON: {{"promo": true}} if the marked lines are still the advertisement, {{"promo": false}} if they have returned to the video's subject."""
+
 MAX_WALK = 30   # default; --max-walk overrides. How far past the region a walk may reach.
 
 
@@ -115,6 +127,12 @@ def main() -> int:
                          "only way to keep the card busy; ollama queues anything it cannot fit.")
     ap.add_argument("--max-walk", type=int, default=MAX_WALK)
     ap.add_argument("--tag", default="", help="names the cache, so settings do not overwrite each other")
+    ap.add_argument("--anchor", action="store_true",
+                    help="ground the walk's question in the video's title, instead of asking it to "
+                         "judge 'is this the show' from local text alone")
+    ap.add_argument("--anchor-lines", type=int, default=0,
+                    help="also show N lines from the video's own opening as a sample of its subject "
+                         "and tone (0 = title only)")
     args = ap.parse_args()
     if not (args.same_prompt or args.walk):
         raise SystemExit("choose --same-prompt or --walk")
@@ -142,6 +160,13 @@ def main() -> int:
     # Regions are independent, so they run in parallel. A WALK is sequential inside one region (each
     # step depends on the last answer), which left the card idle at 0-1% between calls; the way to
     # use it is several regions at once. Ollama queues what it cannot fit, so this degrades safely.
+    titles = {}
+    if args.anchor:
+        for vid in found:
+            p = DATA / "captions" / f"{vid}.json"
+            if p.exists():
+                titles[vid] = json.loads(p.read_text(encoding="utf-8")).get("title") or "(untitled)"
+
     jobs = []
     for vid, spans in found.items():
         base = starts[vid]
@@ -163,10 +188,19 @@ def main() -> int:
             return vid, key, tuple(saved[key])
         lines = all_lines[base:base + n]
         if args.walk:
-            def ask(text: str) -> bool:
+            if args.anchor:
+                extra = ""
+                if args.anchor_lines:
+                    opening = " ".join(l["text"] for l in lines[:args.anchor_lines])
+                    extra = f'\nHere is a sample of the show, from its opening: "{opening}"\n'
+                base_ask = WALK_ASK_ANCHORED.format(title=titles.get(vid, "(untitled)"), extra=extra)
+            else:
+                base_ask = WALK_ASK
+
+            def ask(text: str, base_ask=base_ask) -> bool:
                 with lock:
                     calls[0] += 1
-                return bool(ask_bool(WALK_ASK + "\n\n" + text))
+                return bool(ask_bool(base_ask + "\n\n" + text))
             span = walk_region(lines, lo, hi, args.group, args.patience, ask, args.max_walk)
         else:
             wlo, _, text = edge_window(lines, lo, hi)
