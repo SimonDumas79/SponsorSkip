@@ -437,6 +437,10 @@ none: they are genuine false alarms (the VideoProc tutorial among them).
 The candidate takes 10-20 more points of ad time on sponsored videos and is as clean as the best
 shipped bundle where there is no ad at all.
 
+With the community model on the same 132 videos: **the community model alone skips something on 17%
+of them** (83% untouched, mean 2.9 s, 11% over 10 s, 2% over 60 s). Candidate v3, which uses it as a
+seventh detector, stays clean: 97-98% untouched, mean 0.3-0.5 s, 1-2% over 10 s, 0% over 60 s.
+
 ### Audits the rooms asked for (2026-09-22, `audits.py`)
 
 - **Channels**: 203 channels for 205 videos (2 with a second video), so channel-grouped folds are
