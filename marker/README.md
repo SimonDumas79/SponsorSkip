@@ -88,27 +88,64 @@ which would cost accuracy in the extension and nowhere else.
 The reader is `marker-candidate` in the extension popup and through the local server. Creator
 chapters are fetched by the same `yt-dlp` call that fetches the captions and applied when serving.
 
-## The system of models (2026-09-21)
+## The system of models (2026-09-22)
 
-The marker is one of several small models, each with one job. Every stage after
-the marker is trained on OUT-OF-FOLD scores with the same channel folds, and
-every language-model answer is recorded once and replayed after that.
+Three layers, and the point of the shape is that each one only does what the layer below cannot.
+Every stage after a detector is trained on OUT-OF-FOLD scores with the same channel folds, and every
+language-model answer is recorded once and replayed after that.
+
+**Layer 1, the cheap sweep** — five detectors read every line of the video: the linear marker over
+395 MiniLM features (`train.py`), the same model with meaning or with structure removed, a linear
+model over the potion-base-8M embedding, and a 1-D convolution over the whole video
+(`sequence_model.py`). All small, all CPU.
+
+**Layer 2, the fine-tuned reader** — BGE-small fine-tuned on our labels, reading each line plus 8
+lines either side (`finetune_minilm.py`), plus two more of the same shape trained on where reads
+START and RESUME. It only reads the 30% of lines layer 1 saw something near; on holdout 4 that costs
+nothing at all and does a third of the work. A context model stacks all six detectors' scores over 15
+lines either side (`context_stack.py`), and the edge heads place each region's start and end.
+
+**Layer 3, optional, a language model on edges only** — the regions are already found; Claude is
+asked, once per region and given a window around it, only where that region starts and ends. It is
+never asked to detect: as a seventh detector it changed nothing (64.4% against 64.6%). Anything it
+does not answer keeps layer 2's edges, so the layer degrades to the free tier and no further.
 
 | Job | Script | What it is |
 |---|---|---|
-| detect | `train.py` | the linear marker: one score per caption line |
-| detect, in context | `context_stack.py` | a second stage reading the marker's logits for 15 lines either side: it learns the shape of a read |
-| confirm, free | `region_judge.py` | a logistic model over each flagged region's facts (length, confidence, cues, seam, position) |
-| confirm, local GPU | `confirm_check.py` | qwen3 says yes/no per flagged window; every answer recorded to `data/confirm_verdicts*.jsonl` |
-| place edges | `edge_heads.py` | start and resume models trained on `is_start` / `is_resume` |
-| place edges, local GPU | `qwen_edges.py` | qwen3 gives the start line and the resume line, as Claude does in `server/verify.mjs` |
-| choose and grade | `replay.py`, `system_eval.py` | routing rules scored over the recorded answers for free (the Dream-RSI idea); settings chosen by one written rule on CV, graded once per holdout (`--set holdout`, `--set holdout2`) |
-| ship | `predict.py` | the free tier end to end on one caption file (`run`), on stdin for the server (`serve`); `check` proves the live path cuts exactly the evaluator's regions |
-| ship, all data | `build_production.py` | the free tier retrained on all 205 labelled videos: `data/production/free_tier_pooled.pt`, the candidate for the next fresh test |
+| detect, cheap | `train.py`, `sequence_model.py`, `detector_bakeoff.py` | five small models, one score per line |
+| detect, fine-tuned | `finetune_minilm.py` | BGE-small on line + 8 either side; the sixth detector |
+| gate | `export_candidate.py`, `serve_candidate.py` | the cheap five decide which lines layer 2 reads |
+| stack | `context_stack.py` | one context model over all six, trained on out-of-fold scores |
+| place edges | `edge_heads.py` + two fine-tuned models, averaged | start and resume, trained on `is_start` / `is_resume` |
+| place edges, language model | `cascade.py`, `serve_candidate.py` | Claude, one window per region, trusted only near it |
+| creator chapters | `candidate.py` | a chapter the creator titled "Sponsor"; free, no false alarm in any set |
+| export | `export_candidate.py` | trains every part on all 205 videos into `data/production/candidate.pt` |
+| serve | `predict.py serve --tier` | `free`, `candidate`, `cascade`, `qwen` |
+| grade | `replay.py`, `cascade.py`, `export_candidate.py --verify` | ad time skipped, real show lost, share of videos over 60 s |
 
-`data/production/free_tier.pt` is what the server's opt-in `?reader=marker` loads (0.7.0).
-It is the graded system (a copy is kept as `free_tier_graded.pt`); replace it with the
-pooled bundle only after that passes a fresh test.
+**Where the numbers come from, and what they are worth.** On holdout 4 (64 videos, 64 channels, none
+in any other set), graded once as pre-registered:
+
+| | ad time skipped | show lost per video |
+|---|---|---|
+| cue patterns, no model | 30.1% | 13.0 s |
+| `free_tier.pt`, what the extension served until today | 40.3% | 10.8 s |
+| the candidate (six detectors, averaged edge heads) | 67.6% | 8.6 s |
+| the candidate + the community SponsorBlock model | 67.2% | 5.5 s |
+| the cascade (Claude on edges) — **development number, not a grade** | 71.2% | 4.6 s |
+| Claude reading the whole transcript | 81.9% | 5.3 s |
+
+The cascade's row is marked because the idea was developed against that set after it was graded; its
+honest test is holdout 5 (`build_holdout5.sh`, pre-registration 3), which waits on new videos.
+
+Open problems, in order: **missed reads** are the big basket (36% of ad time, and 17% of reads are
+never touched at all); reads under 30 s specifically; non-English videos, where the machine-translated
+caption track holds the worst video in every measured set; and the fact that the noise band on a
+205-video set is about 3 points, which is wider than anything the last ten experiments moved. That
+last one is why more labelled data, not more architecture, is the only lane still worth running.
+
+
+### The system as it stood on 2026-09-21 (kept for the holdout 1 and 2 numbers)
 
 **Measured, 2026-09-21** (share of ad time skipped / real show lost per video):
 
