@@ -465,8 +465,9 @@ spend lost-show budget). Graded on English videos only: 51.4-53.9% / 59.3-63.2%.
 Which detectors still earn their place with BGE in (`bge_ablation.py`, BGE seeds 0 / 1, B = 5 / B = 10):
 BGE alone 41.4 / 56.0% and 42.9 / 48.0%; marker + BGE 46.4 / 50.0% and 48.3 / 53.2%; marker + meaning
 + structure + BGE (one frozen encoder + BGE) 47.5 / 56.1% and 49.9 / 58.3%; all six 52.1 / 58.7% and
-48.1 / 57.3%. All six stay for accuracy; dropping potion and the conv model is the cheaper build,
-at roughly 2-4 points.
+48.1 / 57.3%. The one-encoder + BGE stack is within noise of all six (behind by 4.6 / 2.6 points on
+seed 0, ahead by 1.8 / 1.0 on seed 1), so potion and the conv model are optional: the cheaper build
+costs nothing measurable. BGE alone and marker + BGE are clearly worse.
 
 ### Fine-tuned BGE start/resume models: more precise starts (2026-09-22, `edge_ft_eval.py`)
 
