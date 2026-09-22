@@ -226,7 +226,7 @@ class CandidateTier(Candidate):
         # 7.9 s for the heads on the same regions -- better on both axes. One window per region, so
         # roughly a tenth of the text a whole-transcript read sends.
         if self.edges_with:
-            placed = self._model_edges(found, rows, texts)
+            placed = self._model_edges(found, rows, texts, ps, pe)
         else:
             placed = place(found, rows, ps, pe)
         # A chapter the creator titled "Sponsor" is a read they marked themselves. Adopted on the
@@ -241,31 +241,63 @@ class CandidateTier(Candidate):
             placed = chapter_regions(placed, rows, {str(caps["videoID"]): {"chapters": ch}})
         return next(iter(placed.values()), []), rows
 
-    def _model_edges(self, found: dict, rows, texts: list[str]) -> dict:
-        """Ask a language model where each found region starts and ends."""
-        from edge_heads import place_from_answers
-        from qwen_edges import edge_window
+    def _model_edges(self, found: dict, rows, texts: list[str], ps, pe) -> dict:
+        """Ask a language model where each found region starts and ends.
 
+        Anything the model does not answer -- a usage limit, a timeout, an answer outside the
+        window -- falls back to OUR EDGE HEADS, never to the raw region. That distinction is the
+        whole safety of this layer: on holdout 4 the heads place those regions at 68.4% of ad time
+        and the raw region at 53.1%, so a silent fallback to raw would quietly cost 15 points the
+        first time Claude was rate-limited. The layer degrades to the free tier and no further.
+        """
+        from edge_heads import AFTER, BEFORE, INSIDE, TAIL, place
+
+        by_heads = place(found, rows, ps, pe)
         lines = [{"text": t, "start": float(s)} for t, s in zip(texts, rows.start_seconds)]
-        answers = {}
+        out, asked, taken, failed = {}, 0, 0, 0
         for vid, spans in found.items():
-            for lo, hi in spans:
+            n = int((rows.video == vid).sum())
+            heads = list(by_heads.get(vid, []))
+            for k, (lo, hi) in enumerate(spans):
                 lo, hi = int(lo), int(hi)
-                wlo, _, text = edge_window(lines, lo, hi)
-                if self.edges_with == "local":
-                    from qwen_edges import ASK as LOCAL_ASK, ask_edges
-                    a = ask_edges(LOCAL_ASK + "\n\n" + text)
-                else:
-                    from cascade import ASK
-                    from claude_label import ask_claude
-                    a = ask_claude(ASK + "\n\n" + text, model=self.edges_with)
-                # A failed or unusable answer keeps the region, which the heads then place.
-                if not isinstance(a, dict) or "_error" in a:
+                fallback = heads[k] if k < len(heads) else (lo, hi)
+                asked += 1
+                a = self._ask_edges(lines, lo, hi)
+                if a is None:
+                    failed += 1
+                    out.setdefault(vid, []).append(fallback)
                     continue
-                answers[f"{vid}:{lo}-{hi}"] = {"wlo": int(wlo), "start_line": a.get("start_line"),
-                                               "end_line": a.get("end_line")}
-        placed, _ = place_from_answers(found, answers, rows)
-        return placed
+                wlo, start_line, end_line = a
+                if start_line is None or end_line is None:
+                    out.setdefault(vid, []).append(fallback)
+                    continue
+                start = min(max(wlo + int(start_line), 0), n - 1)
+                end = min(max(wlo + int(end_line), start + 1), n)
+                # Trust it only near the region we found; anything else keeps the heads' edges.
+                if lo - BEFORE <= start <= lo + INSIDE and hi - TAIL <= end <= hi + AFTER:
+                    out.setdefault(vid, []).append((start, end))
+                    taken += 1
+                else:
+                    out.setdefault(vid, []).append(fallback)
+        self.last_edge_stats = {"asked": asked, "taken": taken, "failed": failed}
+        return out
+
+    def _ask_edges(self, lines: list[dict], lo: int, hi: int):
+        """(window start, start line, end line) from the model, or None if it could not answer."""
+        from qwen_edges import edge_window
+        wlo, _, text = edge_window(lines, lo, hi)
+        if self.edges_with == "local":
+            from qwen_edges import ASK as LOCAL_ASK, ask_edges
+            a = ask_edges(LOCAL_ASK + "\n\n" + text)
+        else:
+            from cascade import ASK
+            from claude_label import ask_claude
+            # Serving fails fast. claude_label retries for up to six minutes, which is right for an
+            # overnight sweep and wrong for a video somebody is waiting on.
+            a = ask_claude(ASK + "\n\n" + text, model=self.edges_with, attempts=1, timeout=60.0)
+        if not isinstance(a, dict) or "_error" in a:
+            return None
+        return int(wlo), a.get("start_line"), a.get("end_line")
 
     def segments(self, caps: dict) -> list[dict]:
         spans, rows = self.regions(caps)

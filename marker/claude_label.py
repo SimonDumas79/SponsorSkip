@@ -59,15 +59,17 @@ Answer ONLY with JSON: {"start_line": <number>, "end_line": <number>}
 If there is no sponsor read in these lines at all, answer {"start_line": null, "end_line": null}."""
 
 
-def ask_claude(text: str, model: str = "haiku", timeout: float = 120.0) -> dict | None:
-    for attempt in range(4):
+def ask_claude(text: str, model: str = "haiku", timeout: float = 120.0, attempts: int = 4) -> dict | None:
+    """`attempts` is 4 for a batch sweep, where waiting out a usage limit is free, and 1 when
+    serving, where six minutes of retries would strand a video somebody is waiting on."""
+    for attempt in range(attempts):
         try:
             answer = _ask(text, model, timeout)
         except subprocess.TimeoutExpired:   # one slow answer must not end the whole sweep (2026-09-22)
             answer = {"_error": "timeout"}
         if not (isinstance(answer, dict) and "_error" in answer):
             return answer
-        if attempt < 3:
+        if attempt < attempts - 1:
             time.sleep(60 * (attempt + 1))   # usage limits and overloads clear with time
     return answer
 
