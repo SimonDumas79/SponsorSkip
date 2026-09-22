@@ -96,3 +96,12 @@ stack + BGE seed 0 scores with averaged heads, fixed now: computed by `candidate
 pooled out-of-fold scores, never from holdout 4. Pooled CV (three BGE stack seeds): 49.6-51.0%
 at B = 5 and 61.8-62.4% at B = 10, against 48.1-52.1% and 57.0-58.7% with the MLP heads alone.
 The original candidate stays the primary, pre-registered system.
+
+**Added before holdout 4 is graded (2026-09-22 ~08:10): candidate v3, reported beside the others.**
+Candidate v2 plus the community SponsorBlock model (xenova/sponsorblock-ml, run by
+`sponsorblock_ml.py` on holdout 4) as a seventh detector. Its context model is trained only on the
+160 pooled videos whose SponsorBlock labels postdate the community model's training (`sb_dates.json`),
+and its thresholds come from channel-grouped CV over those 160 (`stack_sbml.py` seed 0): pooled CV
+there 60.7% (B = 5) and 64.6% (B = 10), against 50.1% / 53.1% without it. Holdout-4 videos whose
+labels predate 2022-04 are reported separately (the community model may have trained on them).
+v3 needs the GPU (the community model is ~11 s per video); the primary system stays the candidate.

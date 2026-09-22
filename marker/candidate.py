@@ -143,6 +143,10 @@ def main() -> int:
     ap.add_argument("--fresh", help="a feature file (in marker/data) none of the pooled sets contain")
     ap.add_argument("--bge", help="fine-tuned BGE scores for the fresh rows (finetune_minilm.py --score)")
     ap.add_argument("--dry-run", type=int, help="pooled fold k plays the fresh set (mechanics check only)")
+    ap.add_argument("--sbml", action="store_true",
+                    help="candidate v3: + the community SponsorBlock model as a seventh detector (its predictions for the "
+                         "fresh set must be in sbml_predictions.jsonl); its context model trains only on pooled videos "
+                         "whose labels postdate that model's training (sb_dates.json)")
     ap.add_argument("--edges", nargs=2, metavar=("START", "RESUME"),
                     help="candidate v2: fine-tuned start/resume scores for the fresh rows, averaged with the MLP heads")
     args = ap.parse_args()
@@ -220,6 +224,32 @@ def main() -> int:
         report(f"B={b:>2} candidate (stack + fine-tuned BGE)", kept, T, lang)
         if meta:
             report(f"B={b:>2}   + creator chapters", chapter_regions(kept, T, meta), T, lang)
+    if args.sbml and fs_T is not None and args.dry_run is None:
+        import datetime
+        from sbml_eval import load_preds
+        from stack_sbml import sbml_stream
+        preds = load_preds()
+        d = json.load(open(DATA / "sb_dates.json"))
+        cutoff = datetime.datetime(2022, 4, 1).timestamp() * 1000
+        unseen = np.array([not (d.get(str(v), {}).get("first") and d[str(v)]["first"] < cutoff) for v in P.video])
+        U = sub(P, unseen)
+        sb_P, sb_T = sbml_stream(P, preds), sbml_stream(T, preds)
+        missing = [str(v) for v in np.unique(T.video) if str(v) not in preds]
+        if missing:
+            print(f"  (the community model has not run on {len(missing)} fresh videos; they get no score from it)")
+        FU = np.column_stack([context_features(U, sP[k][unseen]) for k in order] + [context_features(U, sb_P[unseen]), U.X[:, extra_cols]])
+        FT3 = np.column_stack([context_features(T, fresh[k]) for k in order] + [context_features(T, sb_T), T.X[:, extra_cols]])
+        ctx3 = fit_stage2(FU, U.y.astype(np.float32), hidden=32, seed=0)(FT3)
+        oof3 = np.load(DATA / "stack_sbml_oof_s0.npy")[1]
+        hU = ((p_start + fs_oof) / 2)[unseen], ((p_end + fe_oof) / 2)[unseen]
+        g3 = graded(sweep_fine(oof3, U, *hU), U)
+        th3 = {b: pick(g3, b)[0] for b in (5, 10)}
+        print(); print(f"candidate v3 thresholds fixed on CV over the {U.videos} unseen pooled videos: B=5 {th3[5]:.4f}, B=10 {th3[10]:.4f}")
+        for b in (5, 10):
+            kept = place(regions_by_video(ctx3, T, th3[b], 1), T, (ps_T + fs_T) / 2, (pe_T + fe_T) / 2)
+            report(f"B={b:>2} candidate v3 (+ community model)", kept, T, lang)
+            if meta:
+                report(f"B={b:>2}   + creator chapters", chapter_regions(kept, T, meta), T, lang)
     if fs_T is not None:
         print()
         for b in (5, 10):
