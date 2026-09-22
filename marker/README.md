@@ -552,7 +552,9 @@ cannot have learned our answers; channel-grouped 5-fold CV inside them; averaged
 
 +4 to +11 points at B = 5 and +7 to +12 at B = 10 in every seed, within the rule (4.8-8.3 s lost per
 video). The two see different things (short line windows vs long extracted chunks), and the context
-model learns when to trust each. Cost: the community model is a 77M T5 plus a BERT classifier, about
+model learns when to trust each. At the community model's own cost (<= 17.0 s lost per video) the
+combination ties it (73.0-74.1% vs 73.4%); below that cost the community model cannot go at all,
+and the combination gives 64.6-67.0% at 7-8 s. Cost: the community model is a 77M T5 plus a BERT classifier, about
 11 s per video on the GPU, so it belongs in a GPU tier, not the CPU free tier.
 
 ## Notes worth keeping
