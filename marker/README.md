@@ -340,6 +340,22 @@ at the rule's threshold are the ones it cannot tell apart. Not adopted as a filt
 Joint pairs on stack + fine-tuned: +1.7 at B = 5 (ALPHA 0.1, TAU 2, the best of 21 settings) and
 nothing at B = 10; read as selection noise. Not adopted.
 
+### Edge labels checked by Claude: the noise is real, cleaning it does not help (2026-09-22, `verify_edges.py`, `edge_clean.py`)
+
+Simon's point: SponsorBlock marks are set against the video and then mapped onto caption lines, so
+edges can land off the true line. Claude (Sonnet, `claude -p`, SponsorBlock's range not shown) placed
+260 of the 280 pooled reads: median gap 0 s at both edges, but only 60% of starts and 69% of ends
+within 2 s, 10% of each more than 10 s apart, and only 53% of reads agree within 3 s at BOTH edges.
+For 18 labelled reads (6%) Claude found no promotional read in the window. Reading the disagreements,
+neither side is always right (Claude keeps lead-ins like "a quick word from..."; SponsorBlock keeps
+story-style lead-ins and adjacent self-promo).
+
+Retraining the start/end models with disputed edges masked, or with Claude's edges, changes nothing
+that matters: shipped tier 44.6% at B = 10 as shipped vs 44.1% masked vs 43.0-43.3% with Claude's
+edges; stack + fine-tuned 53.1% vs 52.8% vs 51.1%. On the reads where both agree, the placed start is
+still a median 3.6-4.3 s off in every variant. What limits starts is the start model, not label noise.
+Kept: `data/edge_verify.jsonl` (the 139 fully agreed reads are the trustworthy edge benchmark).
+
 ## Notes worth keeping
 
 - **SponsorBlock's CSV dumps are switched off** (bandwidth); the hash-prefix API
