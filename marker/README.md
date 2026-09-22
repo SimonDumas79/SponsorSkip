@@ -562,6 +562,23 @@ Fine-tuned BGE-small on the same CPU: 16.6 s for 1000 windows (~a 35-minute vide
 int8 dynamic quantisation (accuracy of the int8 model not yet checked). So the candidate is ~15-20 s
 per 35-minute video on a desktop CPU, and v3 (with the community model) about a minute.
 
+### The Claude tier beats the community model (2026-09-22, `claude_eval.py`)
+
+The extension's default reader is Claude Haiku. `claude_label.py --model haiku` (the research window
+sweep, not word for word the server's prompt) on the 160 pooled videos whose labels postdate the
+community model's training; graded by our rule on the same videos:
+
+| alone, as it answers | ad time | show lost / video | videos over 60 s |
+|---|---|---|---|
+| **Claude Haiku** | **79.1%** | **9.3 s** | 5.0% |
+| community SponsorBlock model | 73.4% | 17.0 s | 6.9% |
+
+Claude finds more ad at about half the lost show. Both break the 2% over-60 s cap. As an extra
+detector in the stack (context model trained and graded on the 160, seed 0): + Claude 59.7% (B = 5) /
+67.8% (B = 10); + community model 60.7 / 64.6%; + both 51.8 / 65.5% (one seed, 160 videos: likely
+too many inputs for the data). The rule-bound stacks trade some of Claude's recall for staying
+under the cap.
+
 ## Notes worth keeping
 
 - **SponsorBlock's CSV dumps are switched off** (bandwidth); the hash-prefix API
