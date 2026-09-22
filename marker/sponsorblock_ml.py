@@ -52,10 +52,21 @@ def import_their_code():
             for a in attrs:
                 setattr(mod, a, type(a, (Exception,), {}))
             sys.modules[name] = mod
+    # Their src has modules named like ours (predict, train...). Load theirs with their names in place,
+    # then put ours back, so whichever was imported first cannot be picked up by the other.
+    clashing = ("predict", "train", "model", "segment", "preprocess", "shared", "utils", "classify", "errors")
+    ours = {n: sys.modules.pop(n) for n in clashing if n in sys.modules}
     sys.path.insert(0, str(SRC))
-    import predict as their_predict
-    import preprocess as their_preprocess
-    import segment as their_segment
+    try:
+        import predict as their_predict
+        import preprocess as their_preprocess
+        import segment as their_segment
+        import shared as their_shared
+    finally:
+        sys.path.remove(str(SRC))
+        theirs = {n: sys.modules.pop(n) for n in clashing if n in sys.modules}
+        sys.modules.update(ours)
+        sys.modules["sbml_shared"] = their_shared
     return their_predict, their_preprocess, their_segment
 
 

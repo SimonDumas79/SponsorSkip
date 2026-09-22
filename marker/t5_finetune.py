@@ -43,7 +43,9 @@ def main() -> int:
         ctypes.windll.kernel32.SetPriorityClass(ctypes.windll.kernel32.GetCurrentProcess(), 0x4000)
     torch.set_num_threads(4)
     their_predict, their_preprocess, their_segment = import_their_code()
-    from shared import CustomTokens, END_SEGMENT_TEMPLATE, START_SEGMENT_TEMPLATE
+    their_shared = sys.modules["sbml_shared"]
+    CustomTokens, END_SEGMENT_TEMPLATE, START_SEGMENT_TEMPLATE = (their_shared.CustomTokens, their_shared.END_SEGMENT_TEMPLATE,
+                                                                  their_shared.START_SEGMENT_TEMPLATE)
     device = "cuda"
     rows, _, _ = pooled()
     d = json.load(open(DATA / "sb_dates.json"))
