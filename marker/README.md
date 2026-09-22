@@ -389,6 +389,17 @@ It removes false alarms, but the model grows cautious on real reads too, so the 
 the room into more ad time; 9 fixed is under the rooms' 13-of-18 gate. Not adopted on the pooled
 rule. It is the first thing to try on the sponsor-free panel, where every false alarm is pure loss.
 
+### Conditional widening and a GRU over the detectors' scores: not adopted (2026-09-22, `widen_gate.py`, `seq_stack.py`)
+
+- **Conditional widening** (a region still needs the strict threshold, then its edges walk outwards
+  while the score stays above a looser LOW threshold, before the edge heads place it; LOW and the
+  threshold chosen together by the rule): the rule picked "no widening" every time, on the shipped
+  tier and on stack + fine-tuned, back-only and both ends. The out-of-window starts stay unsolved.
+- **GRU over the six detectors' logits** (2-layer bidirectional, inside / start / resume heads on one
+  trunk, trained on 300-line chunks): 45.8-46.5% (B = 5) and 54.5-56.7% (B = 10) against the stack's
+  48.8 / 53.1%: worse at one budget, better at the other, inside the band. Its own start/resume heads
+  did not beat the shipped edge heads. Not adopted; worth one retry with the BGE stream as input.
+
 ## Notes worth keeping
 
 - **SponsorBlock's CSV dumps are switched off** (bandwidth); the hash-prefix API
