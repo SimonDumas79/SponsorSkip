@@ -14,7 +14,6 @@ const STEP_ORDER = {
   marker: ["captions", "marker"],
   "marker-candidate": ["captions", "markerCandidate"],
   "marker-cascade": ["captions", "markerCandidate", "markerCascade"],
-  "marker-cascade-local": ["captions", "markerCandidate", "markerCascade"],
   "marker-qwen": ["captions", "markerQwen"],
 };
 const STEP = {

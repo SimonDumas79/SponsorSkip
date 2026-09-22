@@ -757,6 +757,14 @@ calls per video. Layer 3 sends one window per region instead, about 1.5 regions 
 thousand characters: roughly a tenth of the text for the same model. It does not reach Claude reading
 the whole video (71.2% against 81.9%) but it loses less show doing it, and detection stays local.
 
+**The local model cannot do this job** (`cascade.py --edges --local`, qwen3:8b, same 93 regions):
+62.0% of ad time at 5.4 s lost, against our own heads' 68.4% at 7.9 s and Claude's 71.2% at 4.6 s.
+It took MORE of the offered edges than Claude did (70 of 93 against 59) and placed them worse: 18%
+of reads fully covered against Claude's 46%, and it broke the 60 s cap on one video. It narrows
+regions rather than placing them, which buys show back by giving up ad. `--tier cascade-local` was
+built and then taken out of the extension: shipping it would have offered a reader measurably worse
+than the free tier it sits above.
+
 Worth noting against the raw row: the regions themselves only cover 53.1% of ad time. Placement is
 carrying 18 points, which is why the edges were the right place to spend a language model.
 

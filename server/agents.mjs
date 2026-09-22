@@ -263,7 +263,6 @@ export const AGENTS = {
   marker: "marker free tier (CPU, no language model)",
   "marker-candidate": "marker candidate: six detectors + fine-tuned BGE (CPU)",
   "marker-cascade": `marker finds, claude-${CLAUDE_MODEL} places each edge`,
-  "marker-cascade-local": `marker finds, ${LOCAL_MODEL} places each edge`,
   "marker-qwen": `marker + ${LOCAL_MODEL} checks (local GPU)`,
 };
 

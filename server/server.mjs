@@ -204,9 +204,9 @@ async function readWithAgents(id, video, reader) {
   // The marker readers, opt-in. marker-qwen needs the GPU; when the GPU is busy or warm it runs as
   // the free tier instead, and says so. SponsorBlock only if the marker itself fails.
   if (reader === "marker" || reader === "marker-qwen" || reader === "marker-candidate" ||
-      reader === "marker-cascade" || reader === "marker-cascade-local") {
+      reader === "marker-cascade") {
     let tier = reader === "marker-qwen" ? "qwen" : reader === "marker-candidate" ? "candidate"
-      : reader === "marker-cascade" ? "cascade" : reader === "marker-cascade-local" ? "cascade-local" : "free";
+      : reader === "marker-cascade" ? "cascade" : "free";
     if (tier === "qwen") {
       const blocker = await localBlocker();
       if (blocker) {
@@ -317,8 +317,8 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, { videoId: id, segments, source: "sponsorblock", interim: true });
     }
     const asked = url.searchParams.get("reader");
-    const reader = ["local", "marker", "marker-qwen", "marker-candidate", "marker-cascade",
-                    "marker-cascade-local"].includes(asked) ? asked : "claude";
+    const reader = ["local", "marker", "marker-qwen", "marker-candidate",
+                    "marker-cascade"].includes(asked) ? asked : "claude";
     return send(res, 200, await analyze(id, { reader, fresh: url.searchParams.get("fresh") === "1" }));
   } catch (error) {
     log("FAILED", url.pathname, String(error.message).slice(0, 200));
