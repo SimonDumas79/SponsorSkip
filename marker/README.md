@@ -493,6 +493,24 @@ fine-tuned start/resume models: B = 10 62.0 / 62.4 / 61.8% against 58.7 / 57.3 /
 every seed), median start error 3.7-3.8 s -> 2.2-2.5 s; B = 5 mixed (49.6 / 50.3 / 51.0 against
 52.1 / 48.1 / 49.3). Pre-registered as candidate v2 for holdout 4.
 
+### The community SponsorBlock model on our videos (2026-09-22, `sponsorblock_ml.py`, `sbml_eval.py`)
+
+xenova/sponsorblock-ml (T5-small extracts sponsor text from ~500-token chunks, a BERT classifier
+filters each find; trained on SponsorBlock's database up to early 2022), run with its own chunking
+and parsing code on our caption files, graded by our rule:
+
+| set | ad time | show lost / video | videos over 60 s |
+|---|---|---|---|
+| pooled 205 (may overlap its training labels) | 74.3% | 18.6 s | 7.8% |
+| channel set 169 (3 channels; recent uploads) | 72.7% | 4.1 s | 1.2% |
+
+On the pooled set it fails the rule at every classifier cut (its lowest lost show is 17.0 s per
+video), but it skips far more ad time. On the channel set it beats our pre-registered candidate
+without chapters (64.0% at 6.3 s, B = 10) though not with chapters (91.5%). Leakage caveat: these
+are popular channels with years of SponsorBlock marks, so it has likely learned their older reads
+(same sponsors, same scripts); our models never saw them. `sb_dates.py` measures which videos'
+labels predate its training; holdout 4 (low-review tail videos) is the fair comparison.
+
 ## Notes worth keeping
 
 - **SponsorBlock's CSV dumps are switched off** (bandwidth); the hash-prefix API
