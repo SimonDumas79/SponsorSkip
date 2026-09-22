@@ -765,6 +765,23 @@ regions rather than placing them, which buys show back by giving up ad. `--tier 
 built and then taken out of the extension: shipping it would have offered a reader measurably worse
 than the free tier it sits above.
 
+**That first comparison was not clean, and Simon caught it**: Claude was asked with `cascade.ASK`
+(which spells out that the read starts where the host leaves the subject and that the turn into the
+ad belongs inside) while qwen got the older, thinner `qwen_edges.ASK`. Asked exactly what Claude was
+asked (`local_edges.py --same-prompt`, same 93 regions):
+
+| qwen3:8b placing the same regions' edges | ad time | show lost | reads fully covered |
+|---|---|---|---|
+| its own old prompt | 62.0% | 5.4 s | 18% |
+| **Claude's prompt** | **62.6%** | **3.3 s** | **26%** |
+| our averaged edge heads, for comparison | 68.4% | 7.9 s | 38% |
+| the raw region, for comparison | 53.1% | 3.3 s | 8% |
+
+The prompt was worth something -- a third fewer seconds of show lost and half again as many reads
+fully covered -- and it does not close the gap: still 5.8 points of ad time behind our own heads. Note
+where it lands: at 3.3 s it has exactly the RAW region's show loss, meaning it is barely widening the
+region at all. The instruction was a real handicap; the model is the limit.
+
 Worth noting against the raw row: the regions themselves only cover 53.1% of ad time. Placement is
 carrying 18 points, which is why the edges were the right place to spend a language model.
 
