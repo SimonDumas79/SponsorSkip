@@ -61,6 +61,33 @@ recall across budgets of 1-15 s of lost show per video, and never touches the
 holdout; frontier candidates are saved to `data/zoo/` with their out-of-fold
 scores so they can be cloned, mutated or stacked later.
 
+### Shipping the candidate (2026-09-22)
+
+Measuring a system and serving it are two different jobs, and for a day and a half only the first one
+was done. These are the steps that put a measured system in front of a user:
+
+```bash
+bash marker/data/export_chain.sh                          # GPU, ~15 min: the three fine-tuned
+                                                          # checkpoints (inside, start, resume)
+python marker/export_candidate.py                         # CPU: everything else -> data/production/candidate.pt
+python marker/export_candidate.py --verify holdout4       # does the bundle reproduce the grade?
+python marker/export_candidate.py --from-checkpoints holdout4   # does the SIBLING the checkpoints
+                                                          # hold reproduce it too? (slow, CPU)
+python marker/serve_candidate.py check holdout4 --limit 6 # captions in, the evaluator's regions out
+python marker/predict.py serve --tier candidate           # what server/agents.mjs calls
+```
+
+Each check answers a different question and none of them is optional. `--verify` reads the prebuilt
+feature files, so it tests the bundle's weights and thresholds. `--from-checkpoints` recomputes the
+three fine-tuned streams from the saved weights, which matters because they come from a fresh
+training run of the same recipe and GPU training is not bit-identical between runs. `check` starts
+from a raw caption file and tests the whole serving path, including the three encoders: a mismatch
+there means the serving path builds features differently from the way the training data was built,
+which would cost accuracy in the extension and nowhere else.
+
+The reader is `marker-candidate` in the extension popup and through the local server. Creator
+chapters are fetched by the same `yt-dlp` call that fetches the captions and applied when serving.
+
 ## The system of models (2026-09-21)
 
 The marker is one of several small models, each with one job. Every stage after
