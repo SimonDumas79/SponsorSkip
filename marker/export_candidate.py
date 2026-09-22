@@ -161,10 +161,59 @@ def verify(which: str) -> int:
     return 0
 
 
+def from_checkpoints(which: str) -> int:
+    """The same grade, but the three fine-tuned streams recomputed by the SAVED CHECKPOINTS.
+
+    --verify uses the .npy scores the graded runs produced. Those came from a different training run
+    of the same recipe, and GPU training is not bit-identical between runs, so the checkpoint in the
+    bundle is a sibling of the graded model rather than the same weights. This grades the sibling: if
+    it lands on the recorded numbers, the served system is the measured one in every way that counts.
+    """
+    import json
+
+    from serve_candidate import Candidate
+    fresh = f"features_{which}.npz"
+    T = load(DATA / fresh)
+    potT = np.load(DATA / POTION[fresh])["X"]
+    potT = potT[:, :potT.shape[1] - 2]
+    text = {}
+    with open(DATA / f"examples_{which}.jsonl", encoding="utf-8") as f:
+        for ln in f:
+            if ln.strip():
+                r = json.loads(ln)
+                text[(r["videoID"], r["i"])] = r["text"]
+    d = np.load(DATA / fresh)
+    texts = [text[(str(v), int(i))] for v, i in zip(d["video"], d["line"])]
+    c = Candidate(OUT)
+    print(f"{fresh}: {T.videos} videos, {T.reads} reads -- fine-tuned streams from the checkpoints", flush=True)
+    bge = c.ft_stream("bge", texts, T.video)
+    fs = c.ft_stream("edge_start", texts, T.video)
+    fe = c.ft_stream("edge_resume", texts, T.video)
+    for name, new, old in (("bge", bge, DATA / f"finetune_full_bge_seed0__{which}.npy"),
+                           ("start", fs, DATA / f"finetune_full_edge_start_seed0__{which}.npy"),
+                           ("resume", fe, DATA / f"finetune_full_edge_resume_seed0__{which}.npy")):
+        if old.exists():
+            o = np.load(old)
+            print(f"  {name:>6}: correlation with the graded run {np.corrcoef(new, o)[0, 1]:.4f}, "
+                  f"mean |difference| {np.abs(new - o).mean():.4f}")
+    ctx, ps, pe = c.score(T, potT, bge)
+    print()
+    for b in (5, 10):
+        report(f"B={b:>2} checkpoints (stack + fine-tuned BGE)",
+               place(regions_by_video(ctx, T, c.thresholds[b], 1), T, ps, pe), T)
+        report(f"B={b:>2} checkpoints v2 (averaged edge heads)",
+               place(regions_by_video(ctx, T, c.thresholds_v2[b], 1), T, (ps + fs) / 2, (pe + fe) / 2), T)
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--verify", metavar="SET", help="a fresh set name, e.g. holdout4")
+    ap.add_argument("--from-checkpoints", metavar="SET",
+                    help="the same grade with the fine-tuned streams recomputed by the saved checkpoints")
     args = ap.parse_args()
+    if args.from_checkpoints:
+        return from_checkpoints(args.from_checkpoints)
     return verify(args.verify) if args.verify else build()
 
 
