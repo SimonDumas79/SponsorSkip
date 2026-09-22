@@ -176,6 +176,16 @@ class CandidateTier(Candidate):
         else:
             th = self.thresholds[self.budget]
         placed = place(regions_by_video(ctx, rows, th, 1), rows, ps, pe)
+        # A chapter the creator titled "Sponsor" is a read they marked themselves. Adopted on the
+        # pooled set and on holdout 4: about a point of ad time, less show lost, and not one false
+        # alarm in any measured set. Free, so it is applied whenever yt-dlp returned chapters.
+        if caps.get("chapters"):
+            from candidate import chapter_regions
+            # yt-dlp names them start_time/end_time/title; the rule was written against the watch-page
+            # shape, which is title/start. Normalise here rather than in the rule.
+            ch = [{"title": c.get("title") or "", "start": float(c.get("start") or c.get("start_time") or 0.0)}
+                  for c in caps["chapters"]]
+            placed = chapter_regions(placed, rows, {str(caps["videoID"]): {"chapters": ch}})
         return next(iter(placed.values()), []), rows
 
     def segments(self, caps: dict) -> list[dict]:

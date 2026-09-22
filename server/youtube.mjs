@@ -62,13 +62,22 @@ export async function getTranscript(videoId, { python = process.env.SPONSORSKIP_
         "-m", "yt_dlp",
         "--skip-download", "--no-simulate", "--no-warnings", "--quiet",
         "--write-subs", "--write-auto-subs", "--sub-langs", SUB_LANGS, "--sub-format", "json3",
-        "--print", "%(title)s\t%(duration)s\t%(channel)s\t%(language)s",
+        // chapters come free in the same call: a chapter the creator titled "Sponsor" is a read
+        // they marked themselves, and in measurement it never once caused a false alarm.
+        "--print", "%(title)s\t%(duration)s\t%(channel)s\t%(language)s\t%(chapters)j",
         "-o", "%(id)s.%(ext)s",
         `https://www.youtube.com/watch?v=${videoId}`,
       ],
       dir,
     );
-    const [title, duration, channel, language] = out.trim().split("\n")[0].split("\t");
+    const [title, duration, channel, language, chaptersJson] = out.trim().split("\n")[0].split("\t");
+    let chapters = null;
+    try {
+      const parsed = JSON.parse(chaptersJson);
+      chapters = Array.isArray(parsed) && parsed.length ? parsed : null;
+    } catch {
+      chapters = null;
+    }
     const file = pickCaptionFile(fs.readdirSync(dir), videoId);
     const transcript = file ? parseJson3(JSON.parse(fs.readFileSync(path.join(dir, file), "utf8"))) : null;
     return {
@@ -78,6 +87,7 @@ export async function getTranscript(videoId, { python = process.env.SPONSORSKIP_
       // The spoken language YouTube reports ("ru", "en", …; null when unknown). When it is not English the
       // "en" track is a machine translation, the class behind the worst video in every measured set.
       language: language && language !== "NA" ? language : null,
+      chapters,
       transcript: transcript?.length ? transcript : null,
       captionFile: file,
     };

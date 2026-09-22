@@ -302,7 +302,8 @@ export function readMarker(id, video, root, { tier = "free", timeoutMs = tier ==
       }
     });
     child.stdin.end(
-      JSON.stringify({ videoID: id, channel: video.channel, duration: video.lengthSeconds, lines: video.transcript }),
+      JSON.stringify({ videoID: id, channel: video.channel, duration: video.lengthSeconds, lines: video.transcript,
+                       chapters: video.chapters ?? null }),
       "utf8",
     );
   });
