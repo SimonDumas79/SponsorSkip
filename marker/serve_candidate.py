@@ -184,3 +184,75 @@ class CandidateTier(Candidate):
         end_of = lambda j: float(starts[j]) if j < len(starts) else float(caps.get("duration") or starts[-1] + 3.0)
         return [{"start": round(float(starts[a]), 2), "end": round(end_of(b), 2), "category": "sponsor"}
                 for a, b in spans]
+
+
+def check(which: str, limit: int) -> int:
+    """The live path against the evaluator: captions in, and the same regions out.
+
+    export_candidate.py --verify proves the bundle reproduces the grade from FEATURE FILES. This
+    proves the other half: that going from a raw caption file all the way to segments -- three
+    encoders, six detectors, the stack, the edge heads -- lands on the same regions. A mismatch here
+    means the serving path builds features differently from the way the training data was built,
+    which is the failure that would quietly cost accuracy in the extension and nowhere else.
+    """
+    import json
+    import time
+
+    from edge_heads import place
+    from replay import regions_by_video
+    from train import DATA, load
+
+    from export_candidate import OUT, POTION
+    rows = load(DATA / f"features_{which}.npz")
+    pot = np.load(DATA / POTION[f"features_{which}.npz"])["X"]
+    pot = pot[:, :pot.shape[1] - 2]
+    # The offline side uses the CHECKPOINTS too, not the .npy scores the graded runs wrote. Those
+    # came from a different training run, so comparing against them would mix two questions. Here the
+    # only difference between the two sides is where the features came from: built live from a
+    # caption file, or read from the prebuilt .npz. That is the thing this check is for.
+    text = {}
+    with open(DATA / f"examples_{which}.jsonl", encoding="utf-8") as f:
+        for ln in f:
+            if ln.strip():
+                r = json.loads(ln)
+                text[(r["videoID"], r["i"])] = r["text"]
+    d = np.load(DATA / f"features_{which}.npz")
+    texts = [text[(str(v), int(i))] for v, i in zip(d["video"], d["line"])]
+    tier = CandidateTier(OUT, device="cpu")
+    bge = tier.ft_stream("bge", texts, rows.video)
+    fs = tier.ft_stream("edge_start", texts, rows.video)
+    fe = tier.ft_stream("edge_resume", texts, rows.video)
+    ctx, ps, pe = tier.score(rows, pot, bge)
+    offline = place(regions_by_video(ctx, rows, tier.thresholds_v2[tier.budget], 1), rows,
+                    (ps + fs) / 2, (pe + fe) / 2)
+
+    vids = [str(v) for v in dict.fromkeys(rows.video)][:limit]
+    same = 0
+    for vid in vids:
+        caps = json.loads((DATA / "captions" / f"{vid}.json").read_text(encoding="utf-8"))
+        t0 = time.time()
+        live, _ = tier.regions(caps)
+        want = offline.get(vid, [])
+        ok = live == want
+        same += ok
+        print(f"  {vid}  {'same' if ok else 'DIFFERENT'}  live {live}  evaluator {want}  "
+              f"({time.time() - t0:.1f} s)", flush=True)
+    print(f"\n{same} of {len(vids)} videos: the live path cut exactly the evaluator's regions")
+    return 0 if same == len(vids) else 1
+
+
+if __name__ == "__main__":
+    import argparse
+    import ctypes
+    import sys
+
+    sys.stdout.reconfigure(encoding="utf-8")
+    if sys.platform == "win32":
+        ctypes.windll.kernel32.SetPriorityClass(ctypes.windll.kernel32.GetCurrentProcess(), 0x4000)
+    torch.set_num_threads(8)
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("cmd", choices=["check"])
+    ap.add_argument("set", nargs="?", default="holdout4")
+    ap.add_argument("--limit", type=int, default=6)
+    a = ap.parse_args()
+    raise SystemExit(check(a.set, a.limit))
