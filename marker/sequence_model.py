@@ -51,7 +51,7 @@ def videos_of(rows, mask):
     return [np.flatnonzero(mask & (rows.video == v)) for v in np.unique(rows.video[mask])]
 
 
-def train_and_score(rows, train_mask, test_mask, hidden, reach, epochs, seed=0):
+def train_and_score(rows, train_mask, test_mask, hidden, reach, epochs, seed=0, return_model=False):
     torch.manual_seed(seed)
     mean, std = scaling(rows.X[train_mask])
     X = torch.from_numpy((rows.X - mean) / std).float()
@@ -74,7 +74,9 @@ def train_and_score(rows, train_mask, test_mask, hidden, reach, epochs, seed=0):
     with torch.no_grad():
         for r in videos_of(rows, test_mask):
             out[r] = torch.sigmoid(model(X[torch.from_numpy(r)])).numpy()
-    return out
+    # export_candidate.py needs the trained weights, not only the scores: training uses train_mask
+    # alone (the scaling too), so the model here is exactly the one that produced the graded numbers.
+    return (out, model, mean, std) if return_model else out
 
 
 def main() -> int:

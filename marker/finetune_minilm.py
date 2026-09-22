@@ -175,7 +175,7 @@ def bernoulli_kl(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     return 0.5 * (kl_ab + kl_ba).mean()
 
 
-def train_fold(train_idx, test_idx, data, y, tok, device, seed: int) -> np.ndarray:
+def train_fold(train_idx, test_idx, data, y, tok, device, seed: int, save: Path | None = None) -> np.ndarray:
     torch.manual_seed(seed)
     rng = np.random.default_rng(seed)
     model = Scorer().to(device)
@@ -222,6 +222,15 @@ def train_fold(train_idx, test_idx, data, y, tok, device, seed: int) -> np.ndarr
             ids, mask, types = encode(tok, [data[k] for k in b], device)
             with torch.autocast("cuda", dtype=torch.bfloat16):
                 out[i:i + len(b)] = torch.sigmoid(model(ids, mask, types).float()).cpu().numpy()
+    # Until 2026-09-22 this function threw the trained weights away and kept only the scores, so the
+    # detector that every measurement was based on could not be SHIPPED -- only re-measured. The
+    # checkpoint is what predict.py loads to serve it.
+    if save is not None:
+        save.parent.mkdir(parents=True, exist_ok=True)
+        torch.save({"state": {k: v.to(torch.float32).cpu() for k, v in model.state_dict().items()},
+                    "opt": dict(OPT), "window": OPT["window"], "max_tokens": MAX_TOKENS,
+                    "trained_on": int(len(train_idx)), "seed": seed}, save)
+        print(f"    -> checkpoint {save}", flush=True)
     del model, opt
     torch.cuda.empty_cache()
     return out
@@ -237,6 +246,10 @@ def main() -> int:
     ap.add_argument("--reinit", type=int, default=0)
     ap.add_argument("--rdrop", type=float, default=0.0)
     ap.add_argument("--max-tokens", type=int, default=MAX_TOKENS, help="longer windows need more (BGE and MiniLM take 512)")
+    ap.add_argument("--save-model", type=Path, default=None,
+                    help="write the trained weights here, so the detector can be SERVED and not only measured")
+    ap.add_argument("--train-only", action="store_true",
+                    help="train on every pooled line and save the checkpoint; score nothing. The export path.")
     ap.add_argument("--target", choices=["inside", "start", "resume"], default="inside",
                     help="inside a read (the recipe of record), or the soft start / resume line labels the edge heads use")
     ap.add_argument("--tag", default="", help="names the output: finetune_oof_<tag>_seed<seed>.npy (empty = the recipe of record)")
@@ -261,6 +274,14 @@ def main() -> int:
     print(f"pooled: {rows.videos} videos, {len(rows):,} lines, {int(y.sum()):,} inside a read; "
           f"{OPT}, seed {args.seed}", flush=True)
 
+    if args.train_only:
+        if not args.save_model:
+            raise SystemExit("--train-only needs --save-model PATH: the whole point is the checkpoint")
+        n = len(data)
+        print(f"  training on all {n:,} pooled lines, saving weights to {args.save_model}", flush=True)
+        train_fold(np.arange(n), np.arange(min(8, n)), data, y, tok, device, args.seed, save=args.save_model)
+        return 0
+
     if args.score:
         ex_path, ft_path = (DATA / Path(a).name if not Path(a).exists() else Path(a) for a in args.score)
         text = {}
@@ -283,7 +304,8 @@ def main() -> int:
         all_y = np.concatenate([y, np.zeros(len(fresh), np.float32)])
         n = len(data)
         print(f"  training on all {n:,} pooled lines, scoring {len(fresh):,} lines of {ft_path.name}", flush=True)
-        scores = train_fold(np.arange(n), np.arange(n, n + len(fresh)), all_data, all_y, tok, device, args.seed)
+        scores = train_fold(np.arange(n), np.arange(n, n + len(fresh)), all_data, all_y, tok, device, args.seed,
+                            save=args.save_model)
         name = ft_path.stem.replace("features_", "")
         out = DATA / f"finetune_full_{args.tag or 'recipe'}_seed{args.seed}__{name}.npy"
         np.save(out, scores)
