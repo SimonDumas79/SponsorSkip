@@ -75,6 +75,7 @@ def main() -> int:
             test = np.isin(rows.channel, fold)
             p[test] = fit_weighted(F[~test], rows.y[~test].astype(np.float32), weight[~test])(F[test])
         results[f"weight {w:g}"] = (p, graded(sweep_fine(p, rows, p_start, p_end), rows))
+        np.save(DATA / f"hardneg_w{w:g}_oof.npy", p)   # kept for the sponsor-free panel, where every false alarm is pure loss
         print(f"  trained with weight {w:g}", flush=True)
 
     ref10 = pick(g_base, 10)

@@ -374,6 +374,21 @@ videos fall back to SponsorBlock (Simon's decision), English is the free tier's 
 
 False alarms of the best system at B = 10: 17 regions in 16 videos from 16 different channels.
 
+### Hard-negative mining: fewer false alarms, less ad time (2026-09-22, `hardneg.py`)
+
+The rooms' first build. The best system (stack + fine-tuned) at a loose threshold (10% of lines)
+makes 459 false regions (3,676 show lines); those lines get weight W in the context model's loss:
+
+| W | B = 5 | B = 10 | false regions at B = 10 | fixed / newly broken |
+|---|---|---|---|---|
+| 1 (reference) | 48.8% @ 4.9 s | 53.1% @ 7.0 s | 17 | |
+| 3 | 50.0% @ 4.8 s | 51.7% @ 5.8 s | 14 | 7 / 4 |
+| 10 | 46.4% @ 4.9 s | 47.6% @ 5.0 s | 10 | 9 / 2 |
+
+It removes false alarms, but the model grows cautious on real reads too, so the rule cannot turn
+the room into more ad time; 9 fixed is under the rooms' 13-of-18 gate. Not adopted on the pooled
+rule. It is the first thing to try on the sponsor-free panel, where every false alarm is pure loss.
+
 ## Notes worth keeping
 
 - **SponsorBlock's CSV dumps are switched off** (bandwidth); the hash-prefix API
