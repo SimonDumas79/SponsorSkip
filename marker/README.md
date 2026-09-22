@@ -423,6 +423,22 @@ chosen tier-B videos Claude found a sponsor read in 1 (a 15 s read): about 4% la
 panel is clean enough to trust. Of the 4 videos the graded tier flagged, Claude found a read in
 none: they are genuine false alarms (the VideoProc tutorial among them).
 
+### Audits the rooms asked for (2026-09-22, `audits.py`)
+
+- **Channels**: 203 channels for 205 videos (2 with a second video), so channel-grouped folds are
+  already near leave-one-video-out; channel repetition cannot inflate the CV numbers.
+- **Channel-clustered bootstrap** (2000 resamples of channels) of the gain over the shipped tier, each
+  system at its own rule choice: stack + fine-tuned MiniLM +9.0 to +10.5 points (B = 5) and +8.2 to
+  +9.1 (B = 10) over three seeds, every interval clear of zero; **stack + fine-tuned BGE-small (seed 0)
+  +13.8 [+9.8, +18.1] and +14.1 [+10.6, +17.7]**. What the bootstrap cannot remove: every system was
+  chosen on these same folds, so the size still needs a fresh many-channel test.
+- **Stability**: of the reads each stack + fine-tuned seed skips 5+ points more of (53 / 55 / 57), 45
+  win in every seed; the gain is not a reshuffle.
+- **Misses** (B = 10, Wilson 95%): complete misses 47% [41, 53] shipped, 39-40% stack + fine-tuned,
+  32% [27, 38] stack + BGE.
+- **Start error vs caption gaps**: Spearman +0.04 on 72 agreed reads; the ~4 s start floor is not a
+  caption-gap effect.
+
 ## Notes worth keeping
 
 - **SponsorBlock's CSV dumps are switched off** (bandwidth); the hash-prefix API
