@@ -33,6 +33,8 @@ import argparse
 import ctypes
 import json
 import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 import torch
@@ -107,6 +109,9 @@ def main() -> int:
     ap.add_argument("--walk", action="store_true", help="walk outward with yes/no questions, no line numbers")
     ap.add_argument("--group", type=int, default=3)
     ap.add_argument("--patience", type=int, default=2)
+    ap.add_argument("--workers", type=int, default=4,
+                    help="regions in parallel. A walk is sequential within a region, so this is the "
+                         "only way to keep the card busy; ollama queues anything it cannot fit.")
     args = ap.parse_args()
     if not (args.same_prompt or args.walk):
         raise SystemExit("choose --same-prompt or --walk")
@@ -130,46 +135,57 @@ def main() -> int:
     print(f"{args.set}: {T.videos} videos, {T.reads} reads; {n_regions} regions at B={args.budget}. "
           f"qwen3:8b, {tag}.", flush=True)
 
-    out, calls, done = {}, 0, 0
+    # Regions are independent, so they run in parallel. A WALK is sequential inside one region (each
+    # step depends on the last answer), which left the card idle at 0-1% between calls; the way to
+    # use it is several regions at once. Ollama queues what it cannot fit, so this degrades safely.
+    jobs = []
+    for vid, spans in found.items():
+        base = starts[vid]
+        n = int((T.video == vid).sum())
+        heads = list(by_heads.get(vid, []))
+        for k, (lo, hi) in enumerate(spans):
+            lo, hi = int(lo), int(hi)
+            back = tuple(int(x) for x in heads[k]) if k < len(heads) else (lo, hi)
+            jobs.append((vid, base, n, lo, hi, back))
+
+    out, done = {}, 0
+    calls = [0]
+    lock = threading.Lock()
+
+    def run(job):
+        vid, base, n, lo, hi, back = job
+        key = f"{vid}:{lo}-{hi}"
+        if key in saved:
+            return vid, key, tuple(saved[key])
+        lines = all_lines[base:base + n]
+        if args.walk:
+            def ask(text: str) -> bool:
+                with lock:
+                    calls[0] += 1
+                return bool(ask_bool(WALK_ASK + "\n\n" + text))
+            span = walk_region(lines, lo, hi, args.group, args.patience, ask)
+        else:
+            wlo, _, text = edge_window(lines, lo, hi)
+            with lock:
+                calls[0] += 1
+            a = ask_edges(CLAUDE_ASK + "\n\n" + text)
+            span = back
+            if isinstance(a, dict) and a.get("start_line") is not None and a.get("end_line") is not None:
+                s0 = min(max(int(wlo) + int(a["start_line"]), 0), n - 1)
+                e0 = min(max(int(wlo) + int(a["end_line"]), s0 + 1), n)
+                if lo - BEFORE <= s0 <= lo + INSIDE and hi - TAIL <= e0 <= hi + AFTER:
+                    span = (s0, e0)
+        return vid, key, (int(span[0]), int(span[1]))
+
     try:
-        for vid, spans in found.items():
-            base = starts[vid]
-            n = int((T.video == vid).sum())
-            lines = all_lines[base:base + n]
-            heads = list(by_heads.get(vid, []))
-            for k, (lo, hi) in enumerate(spans):
-                lo, hi = int(lo), int(hi)
-                # int() matters: heads[k] holds numpy ints and json.dumps refuses them. This is
-                # the second time that has cost a finished run (cascade.py, earlier today).
-                back = tuple(int(x) for x in heads[k]) if k < len(heads) else (lo, hi)
-                key = f"{vid}:{lo}-{hi}"
-                if key in saved:
-                    out.setdefault(vid, []).append(tuple(saved[key]))
-                    done += 1
-                    continue
-                if args.walk:
-                    def ask(text: str) -> bool:
-                        nonlocal calls
-                        calls += 1
-                        return bool(ask_bool(f"{WALK_ASK}\n\n{text}"))
-                    span = walk_region(lines, lo, hi, args.group, args.patience, ask)
-                else:
-                    wlo, _, text = edge_window(lines, lo, hi)
-                    calls += 1
-                    a = ask_edges(f"{CLAUDE_ASK}\n\n{text}")
-                    span = back
-                    if isinstance(a, dict) and a.get("start_line") is not None and a.get("end_line") is not None:
-                        s0 = min(max(int(wlo) + int(a["start_line"]), 0), n - 1)
-                        e0 = min(max(int(wlo) + int(a["end_line"]), s0 + 1), n)
-                        if lo - BEFORE <= s0 <= lo + INSIDE and hi - TAIL <= e0 <= hi + AFTER:
-                            span = (s0, e0)
-                span = (int(span[0]), int(span[1]))
+        with ThreadPoolExecutor(max_workers=args.workers) as pool:
+            for vid, key, span in pool.map(run, jobs):
                 saved[key] = list(span)
                 out.setdefault(vid, []).append(span)
                 done += 1
                 if done % 10 == 0:
                     cache.write_text(json.dumps(saved, indent=1), encoding="utf-8")
-                    print(f"  {done}/{n_regions} regions, {calls} model calls", flush=True)
+                    print(f"  {done}/{n_regions} regions, {calls[0]} model calls", flush=True)
     finally:
         cache.write_text(json.dumps(saved, indent=1), encoding="utf-8")
         unload()   # never leave qwen in VRAM
