@@ -60,10 +60,16 @@ If there is no sponsor read in these lines at all, answer {"start_line": null, "
 
 
 def ask_claude(text: str, model: str = "haiku", timeout: float = 120.0) -> dict | None:
-    try:
-        return _ask(text, model, timeout)
-    except subprocess.TimeoutExpired:   # one slow answer must not end the whole sweep (2026-09-22)
-        return None
+    for attempt in range(4):
+        try:
+            answer = _ask(text, model, timeout)
+        except subprocess.TimeoutExpired:   # one slow answer must not end the whole sweep (2026-09-22)
+            answer = {"_error": "timeout"}
+        if not (isinstance(answer, dict) and "_error" in answer):
+            return answer
+        if attempt < 3:
+            time.sleep(60 * (attempt + 1))   # usage limits and overloads clear with time
+    return answer
 
 
 def _ask(text: str, model: str, timeout: float) -> dict | None:
@@ -78,8 +84,16 @@ def _ask(text: str, model: str, timeout: float) -> dict | None:
         input=text, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout,
         creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
     )
+    # A failed call (usage limit, overload, crash) must never read as "no read here": on 2026-09-22 a
+    # Sonnet sweep lost half its answers that way and looked merely cautious. Errors come back marked.
     try:
-        result = json.loads(proc.stdout).get("result", "")
+        data = json.loads(proc.stdout)
+    except (json.JSONDecodeError, TypeError):
+        return {"_error": (proc.stderr or proc.stdout or "no output")[-200:]}
+    if proc.returncode != 0 or data.get("is_error") or data.get("subtype") not in (None, "success"):
+        return {"_error": str(data.get("result") or data.get("subtype") or proc.returncode)[-200:]}
+    try:
+        result = data.get("result", "")
         match = re.search(r"\{[\s\S]*?\}", result.replace("```json", "").replace("```", ""))
         return json.loads(match.group(0)) if match else None
     except (json.JSONDecodeError, AttributeError, TypeError):
@@ -94,7 +108,7 @@ def label_video(caps: dict, model: str, verbose: bool = True) -> dict:
     """Every window of one transcript, swept past Claude. Returns merged segments."""
     lines = caps["lines"]
     found: list[tuple[int, int]] = []
-    windows = rejected = 0
+    windows = rejected = failed = 0
 
     for lo in range(0, len(lines), STEP_LINES):
         hi = min(lo + WINDOW_LINES, len(lines))
@@ -102,6 +116,9 @@ def label_video(caps: dict, model: str, verbose: bool = True) -> dict:
             break
         windows += 1
         answer = ask_claude(f"{ASK}\n\n{render(lines, lo, hi)}", model=model)   # before 2026-09-22 10:40 the model was never passed: every run was Haiku
+        if isinstance(answer, dict) and "_error" in answer:
+            failed += 1   # recorded, never mistaken for "no read"
+            continue
         if not answer or answer.get("start_line") is None:
             continue
         start, end = answer.get("start_line"), answer.get("end_line")
@@ -143,8 +160,8 @@ def label_video(caps: dict, model: str, verbose: bool = True) -> dict:
     ]
     if verbose:
         print(f"  {caps['videoID']}  {len(lines):5d} lines  {windows:3d} windows  "
-              f"{len(segments)} segment(s)  {rejected} rejected")
-    return {"videoID": caps["videoID"], "windows": windows, "rejected": rejected, "segments": segments}
+              f"{len(segments)} segment(s)  {rejected} rejected  {failed} FAILED")
+    return {"videoID": caps["videoID"], "windows": windows, "rejected": rejected, "failed": failed, "segments": segments}
 
 
 def score(labels: list[dict], truth: dict) -> None:
