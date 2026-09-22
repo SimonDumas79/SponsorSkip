@@ -863,6 +863,35 @@ reliably, so shrinking its leash trades the gain back away rather than keeping i
 the local tier.** Worth a second look if a stop-criterion that isn't just "N misses in a row" is tried
 (e.g. asking the model to compare against the region's own tone instead of a bare yes/no).
 
+### Grounding the walk in what the show is: made it worse, not better (2026-09-22, `local_edges.py --anchor`)
+
+Simon's diagnosis: the walk asks "is this still the show" without ever telling the model what the
+show is, so a generic transitional line gives it nothing to check resumption against. His follow-up:
+a video's title, or even its opening, may not describe what the SPECIFIC section after the ad is
+about, especially once a host has moved to a new topic. Three groundings were tried, all at the best
+swept setting (patience 1, group 3, reach 6 lines), all on the same 93 development regions:
+
+| anchor | ad time | show lost | over 60 s | reads fully covered |
+|---|---|---|---|---|
+| none | 66.2% | 10.1 s | 1.6% | -- |
+| title only | 69.2% | 13.8 s | 1.6% | 24% |
+| title + the video's opening (5 lines) | 69.2% | 14.9 s | 3.1% | 22% |
+| **title + the host's own voice right before the ad** (Simon's refinement, tone not topic) | 68.8% | 12.8 s | 1.6% | 19% |
+| our averaged edge heads, for comparison | 68.4% | 7.9 s | 0.0% | 38% |
+
+Every anchored variant took slightly more ad time than the plain walk and lost meaningfully more
+show doing it. The pre-ad tone sample (built specifically against the risk that a host changes topic
+across the ad break, and phrased as "how the host talks," not "what they must be talking about") was
+the best of the three groundings but still worse than no anchor at all, and its full-coverage rate is
+the lowest of the four. Grounding the question did not make the model more decisive about resumption;
+if anything it made it more willing to call ambiguous lines "still the ad," which is the opposite of
+what was intended.
+
+**Not adopted, in any form tried.** The local walk's ceiling on this development set stays the
+plain, unanchored version at 66.2% / 10.1 s, itself already behind our own heads (68.4% / 7.9 s / no
+videos over cap). The bottleneck reads like model judgment, not missing context: giving it more
+information did not help it decide, and in three tries it made the decision slightly worse.
+
 ### The measured system was never the shipped system (2026-09-22, `export_candidate.py`, `serve_candidate.py`)
 
 Two days of gains lived only in evaluation code. `candidate.py` refits the six detectors on all
