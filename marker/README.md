@@ -356,6 +356,24 @@ edges; stack + fine-tuned 53.1% vs 52.8% vs 51.1%. On the reads where both agree
 still a median 3.6-4.3 s off in every variant. What limits starts is the start model, not label noise.
 Kept: `data/edge_verify.jsonl` (the 139 fully agreed reads are the trustworthy edge benchmark).
 
+### Fine-tune seeds, seed averaging, a 7-detector stack, English scope (2026-09-22, `finetune_compare.py`, `scope_english.py`)
+
+Stack + fine-tuned MiniLM over three fine-tune seeds: 47.3-48.8% (B = 5) and 52.8-53.7% (B = 10) of
+ad time. Averaging the three seeds' logits into one detector (47.0 / 55.9%), and a 7-detector stack
+that also carries the single-line fine-tune (47.1 / 54.2%), land inside that band: not adopted. The
+single-line fine-tune (window 0) ranks lines far worse alone (AP 0.372 vs 0.676) but its stack gave
+46.1 / 56.5% on one seed: a second seed is queued.
+
+**Language.** `video_language.json` (langdetect on each video's original-language title and
+description; agrees with yt-dlp's field on all 169 videos that record one): 64 of 205 pooled videos
+(30%) are not English, and 6-7 of the 17 false-alarm videos are among them (machine-translated
+tracks). The best system graded on English videos only: **53.4% (B = 5) / 56.7% (B = 10)** against
+48.8 / 53.1% on all. Training the context model on English only is worse (44.3-47.3 / 51.4-52.9%):
+less data costs more than cleaner data gains, so training stays on everything. If non-English
+videos fall back to SponsorBlock (Simon's decision), English is the free tier's scope.
+
+False alarms of the best system at B = 10: 17 regions in 16 videos from 16 different channels.
+
 ## Notes worth keeping
 
 - **SponsorBlock's CSV dumps are switched off** (bandwidth); the hash-prefix API
