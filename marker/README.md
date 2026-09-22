@@ -272,6 +272,41 @@ combinations, so it needs a fresh test before it replaces anything. At serving t
 needs potion's embeddings (a ~8 MB lookup table) and three more small models on the
 same features; all CPU-cheap.
 
+### Fine-tuning MiniLM helps; the window alone does not (2026-09-22, `finetune_minilm.py`, `finetune_eval.py`, `window_control.py`)
+
+`finetune_minilm.py` trains every weight of all-MiniLM-L6-v2 on (line, +-8 lines) pairs, same
+pooled channel folds, 2 epochs, ~13 min per seed on the 3080. Settings fixed before any result.
+
+| Line level | average precision | ROC AUC |
+|---|---|---|
+| frozen marker (shipped) | 0.600 | 0.907 |
+| frozen MiniLM given the same 17-line window (`window_control.py`) | 0.606 | 0.917 |
+| fine-tuned MiniLM, seed 0 / seed 1 | 0.676 / 0.686 | 0.938 / 0.935 |
+
+The window alone does nothing; training the encoder is what helps. Through the pipeline
+(context model + edge heads, pooled rule):
+
+| Ad time skipped | B = 5 | B = 10 |
+|---|---|---|
+| shipped free tier, 3 context seeds (`stack_check.py`) | 37.0-40.5% | 39.0-44.6% |
+| fine-tuned free tier, seeds 0 / 1 (better of shipped or own heads) | 40.9 / 46.3% | 54.4 / 51.4% |
+| stack of 5 detectors, 3 seeds | 42.5-48.3% | 49.5-52.4% |
+| **stack + fine-tuned, seeds 0 / 1** | **48.8 / 48.5%** | **53.1 / 52.8%** |
+
+Read by read at B = 10 against the shipped tier: seed 0 53 better / 7 worse, seed 1 70 / 39
+(p = 0.004). Lost show stays 4.5-8.8 s per video. It does NOT cut false alarms (16-21 regions
+against 18). Which edge heads suit it flips between seeds, so read that choice as noise; the
+stack with the fine-tuned scores added is the steadiest result. Candidate only: CV, needs the
+fresh test.
+
+### "Does the show resume?" has no signal; "is the region an island?" does (2026-09-22, `resume_check.py`)
+
+Mean MiniLM embeddings over 12 lines either side, 232 real reads against 27 free-tier false-alarm
+regions. Before-vs-after similarity separates them 45% of the time (50% = none): real reads often
+sit between two subjects (Simon's point), so the show does not "resume" to the same topic. The
+region's similarity to its CLOSER side separates them 75% of the time (reads 0.65, false alarms
+0.74): a read is unlike both neighbours, product talk resembles at least one. Not built yet.
+
 ## Notes worth keeping
 
 - **SponsorBlock's CSV dumps are switched off** (bandwidth); the hash-prefix API
