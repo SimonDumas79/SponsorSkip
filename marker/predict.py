@@ -29,6 +29,7 @@ resume line. qwen is unloaded from the GPU when the video is done.
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -264,7 +265,7 @@ def main() -> int:
     grade_cmd.add_argument("bundles", type=Path, nargs="+")
     serve = sub.add_parser("serve", help="read {videoID, channel, duration, lines:[{start,text}]} on stdin, "
                                          "write {segments} on stdout: how server/agents.mjs calls it")
-    serve.add_argument("--tier", choices=["free", "qwen", "candidate"], default="free")
+    serve.add_argument("--tier", choices=["free", "qwen", "candidate", "cascade", "cascade-local"], default="free")
     serve.add_argument("--budget", type=int, choices=[5, 10], default=10,
                        help="candidate tier: seconds of real show it may lose per video")
     args = ap.parse_args()
@@ -276,6 +277,12 @@ def main() -> int:
         caps.setdefault("channel_id", caps.get("channel") or "unknown")
         if not caps.get("lines"):
             segments = []
+        elif args.tier.startswith("cascade"):
+            # Simon's layered design: the cheap five sweep, the fine-tuned three read a third of the
+            # lines, and a language model places the edges of what was found.
+            from serve_candidate import CandidateTier
+            with_ = "local" if args.tier == "cascade-local" else os.environ.get("SPONSORSKIP_MODEL", "haiku")
+            segments = CandidateTier(device="cpu", budget=args.budget, edges_with=with_).segments(caps)
         elif args.tier == "candidate":
             from serve_candidate import CandidateTier
             segments = CandidateTier(device="cpu", budget=args.budget).segments(caps)

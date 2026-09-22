@@ -87,6 +87,7 @@ const STEPS = {
   marker: "Reading with the free marker (no language model)",
   markerQwen: "The marker finds, your GPU checks each find",
   markerCandidate: "Reading with six detectors and the fine-tuned model",
+  markerCascade: "Found the reads, now placing their edges exactly",
 };
 function stage(id, step, extra = {}) {
   const was = partial.get(id) ?? { segments: [] };
@@ -202,8 +203,10 @@ async function readWithAgents(id, video, reader) {
   }
   // The marker readers, opt-in. marker-qwen needs the GPU; when the GPU is busy or warm it runs as
   // the free tier instead, and says so. SponsorBlock only if the marker itself fails.
-  if (reader === "marker" || reader === "marker-qwen" || reader === "marker-candidate") {
-    let tier = reader === "marker-qwen" ? "qwen" : reader === "marker-candidate" ? "candidate" : "free";
+  if (reader === "marker" || reader === "marker-qwen" || reader === "marker-candidate" ||
+      reader === "marker-cascade" || reader === "marker-cascade-local") {
+    let tier = reader === "marker-qwen" ? "qwen" : reader === "marker-candidate" ? "candidate"
+      : reader === "marker-cascade" ? "cascade" : reader === "marker-cascade-local" ? "cascade-local" : "free";
     if (tier === "qwen") {
       const blocker = await localBlocker();
       if (blocker) {
@@ -211,10 +214,11 @@ async function readWithAgents(id, video, reader) {
         tier = "free";
       }
     }
-    const agent = tier === "qwen" ? AGENTS["marker-qwen"] : tier === "candidate" ? AGENTS["marker-candidate"] : AGENTS.marker;
+    const agent = AGENTS[`marker-${tier}`] ?? (tier === "qwen" ? AGENTS["marker-qwen"] : AGENTS.marker);
     try {
       const t0 = Date.now();
-      stage(id, tier === "qwen" ? "markerQwen" : tier === "candidate" ? "markerCandidate" : "marker");
+      stage(id, tier === "qwen" ? "markerQwen" : tier === "candidate" ? "markerCandidate"
+        : tier.startsWith("cascade") ? "markerCascade" : "marker");
       const segments = await readMarker(id, video, root, { tier });
       tried.push({ agent, outcome: `${segments.length} segment(s)`, seconds: Math.round((Date.now() - t0) / 1000) });
       return { ...base, segments, source: agent, tried };
@@ -313,7 +317,8 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, { videoId: id, segments, source: "sponsorblock", interim: true });
     }
     const asked = url.searchParams.get("reader");
-    const reader = ["local", "marker", "marker-qwen", "marker-candidate"].includes(asked) ? asked : "claude";
+    const reader = ["local", "marker", "marker-qwen", "marker-candidate", "marker-cascade",
+                    "marker-cascade-local"].includes(asked) ? asked : "claude";
     return send(res, 200, await analyze(id, { reader, fresh: url.searchParams.get("fresh") === "1" }));
   } catch (error) {
     log("FAILED", url.pathname, String(error.message).slice(0, 200));

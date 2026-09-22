@@ -13,6 +13,8 @@ const STEP_ORDER = {
   local: ["captions", "gpu", "verify", "full"],
   marker: ["captions", "marker"],
   "marker-candidate": ["captions", "markerCandidate"],
+  "marker-cascade": ["captions", "markerCandidate", "markerCascade"],
+  "marker-cascade-local": ["captions", "markerCandidate", "markerCascade"],
   "marker-qwen": ["captions", "markerQwen"],
 };
 const STEP = {
@@ -23,6 +25,7 @@ const STEP = {
   verify: { label: "Claude checking that answer", color: "#e0af68" },
   marker: { label: "Reading with the free marker", color: "#73daca" },
   markerCandidate: { label: "Six detectors reading", color: "#73daca" },
+  markerCascade: { label: "Placing each edge", color: "#b4f9f8" },
   markerQwen: { label: "The marker finds, your GPU checks", color: "#2ac3de" },
 };
 

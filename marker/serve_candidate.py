@@ -162,10 +162,12 @@ class CandidateTier(Candidate):
     """
 
     def __init__(self, path=DEFAULT, device: str | None = "cpu", budget: int = 10, v2: bool = True,
-                 gated: bool = True):
+                 gated: bool = True, edges_with: str | None = None):
         super().__init__(path, device)
         self.budget, self.v2 = budget, v2
         self.gated = gated and bool(self.gate)
+        # None keeps our own edge heads; "haiku"/"sonnet" asks Claude; "local" asks the GPU model.
+        self.edges_with = edges_with
         self._encoders = {}
 
     def _encoder(self, kind: str):
@@ -218,7 +220,15 @@ class CandidateTier(Candidate):
             th = self.thresholds_v2[self.budget]
         else:
             th = self.thresholds[self.budget]
-        placed = place(regions_by_video(ctx, rows, th, 1), rows, ps, pe)
+        found = regions_by_video(ctx, rows, th, 1)
+        # Layer 3, opt-in: the cheap layers detect, a language model says where each region starts
+        # and ends. Measured on holdout 4: 71.2% of ad time at 4.6 s of show lost, against 68.4% at
+        # 7.9 s for the heads on the same regions -- better on both axes. One window per region, so
+        # roughly a tenth of the text a whole-transcript read sends.
+        if self.edges_with:
+            placed = self._model_edges(found, rows, texts)
+        else:
+            placed = place(found, rows, ps, pe)
         # A chapter the creator titled "Sponsor" is a read they marked themselves. Adopted on the
         # pooled set and on holdout 4: about a point of ad time, less show lost, and not one false
         # alarm in any measured set. Free, so it is applied whenever yt-dlp returned chapters.
@@ -230,6 +240,32 @@ class CandidateTier(Candidate):
                   for c in caps["chapters"]]
             placed = chapter_regions(placed, rows, {str(caps["videoID"]): {"chapters": ch}})
         return next(iter(placed.values()), []), rows
+
+    def _model_edges(self, found: dict, rows, texts: list[str]) -> dict:
+        """Ask a language model where each found region starts and ends."""
+        from edge_heads import place_from_answers
+        from qwen_edges import edge_window
+
+        lines = [{"text": t, "start": float(s)} for t, s in zip(texts, rows.start_seconds)]
+        answers = {}
+        for vid, spans in found.items():
+            for lo, hi in spans:
+                lo, hi = int(lo), int(hi)
+                wlo, _, text = edge_window(lines, lo, hi)
+                if self.edges_with == "local":
+                    from qwen_edges import ASK as LOCAL_ASK, ask_edges
+                    a = ask_edges(LOCAL_ASK + "\n\n" + text)
+                else:
+                    from cascade import ASK
+                    from claude_label import ask_claude
+                    a = ask_claude(ASK + "\n\n" + text, model=self.edges_with)
+                # A failed or unusable answer keeps the region, which the heads then place.
+                if not isinstance(a, dict) or "_error" in a:
+                    continue
+                answers[f"{vid}:{lo}-{hi}"] = {"wlo": int(wlo), "start_line": a.get("start_line"),
+                                               "end_line": a.get("end_line")}
+        placed, _ = place_from_answers(found, answers, rows)
+        return placed
 
     def segments(self, caps: dict) -> list[dict]:
         spans, rows = self.regions(caps)
