@@ -211,8 +211,10 @@ class CandidateTier(Candidate):
         bge = self.ft_stream("bge", texts, rows.video, mask, neutral)
         ctx, ps, pe = self.score_from(rows, {**cheap, "bge": bge})
         if self.v2:
-            ps = (ps + self.ft_stream("edge_start", texts, rows.video, mask, neutral)) / 2
-            pe = (pe + self.ft_stream("edge_resume", texts, rows.video, mask, neutral)) / 2
+            ns = float(self.gate.get("neutral_start", 0.0)) if self.gated else 0.0
+            ne = float(self.gate.get("neutral_end", 0.0)) if self.gated else 0.0
+            ps = (ps + self.ft_stream("edge_start", texts, rows.video, mask, ns)) / 2
+            pe = (pe + self.ft_stream("edge_resume", texts, rows.video, mask, ne)) / 2
             th = self.thresholds_v2[self.budget]
         else:
             th = self.thresholds[self.budget]

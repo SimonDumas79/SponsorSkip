@@ -130,14 +130,18 @@ def build() -> int:
     end_head = fit_stage2(EP, soft(is_resume, rows.video), hidden=32)
 
     # Simon's first layer, fixed here rather than per video: the cheap five sweep, and only the
-    # lines they see something near go to the fine-tuned model. Measured on holdout 4 (cascade.py
-    # --gate): a fifth of the lines gives 68.3% of ad time against 68.4% for reading every line, and
-    # a tenth breaks it (62.2%). The cut is the reach score's 80th percentile on the pooled data, so
-    # a video is not judged against itself.
+    # lines they see something near go to the three fine-tuned models. Measured on holdout 4
+    # (cascade.py --gate), all three gated together: at 30% of lines the grade does not move at all
+    # (68.4% of ad time, 7.9 s lost, the same figures to the decimal), at 20% it drops to 66.9%
+    # because `place` searches 20 lines past a region while the gate reaches 15, and at 10% the
+    # detector itself starts missing reads (62.2%). So 30%: a third of the expensive work, nothing
+    # given up. The cut is the reach score's 70th percentile on the POOLED data, so a video is never
+    # judged against itself and a video with no ad in it simply sends fewer lines through.
     cheap = np.max(np.column_stack([streams_oof[k] for k in
                                     ("marker", "meaning", "structure", "potion", "sequence")]), axis=1)
     reach = smooth(cheap, rows.video, 15)
-    gate = {"cut": float(np.quantile(reach, 0.80)), "neutral": float(np.median(bge_oof)), "window": 15, "share": 0.20}
+    gate = {"cut": float(np.quantile(reach, 0.70)), "neutral": float(np.median(bge_oof)), "window": 15, "share": 0.30,
+        "neutral_start": float(np.median(fs_oof)), "neutral_end": float(np.median(fe_oof))}
     print(f"  gate: the fine-tuned model reads a line only within 15 lines of a cheap score "
           f"over {gate['cut']:.4f}; elsewhere it takes {gate['neutral']:.4f}", flush=True)
 
