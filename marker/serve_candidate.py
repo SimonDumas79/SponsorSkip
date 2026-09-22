@@ -77,17 +77,23 @@ class Candidate:
                 out[r] = torch.sigmoid(self.sequence(X[torch.from_numpy(r)])).numpy()
         return out
 
-    def bge_stream(self, texts: list[str], video: np.ndarray) -> np.ndarray:
-        """The fine-tuned detector's score per line, from the checkpoint in the bundle."""
+    def ft_stream(self, which: str, texts: list[str], video: np.ndarray) -> np.ndarray:
+        """A fine-tuned model's score per line, from its checkpoint in the bundle.
+
+        `which` is "bge" (inside a read), "edge_start" or "edge_resume". Each is the same
+        architecture over the same 17-line window; only the target it was trained on differs.
+        """
         from finetune_minilm import OPT, Scorer, encode, pairs
         from transformers import AutoTokenizer
         if self._bge is None:
-            ck = torch.load(self.bundle_dir / self.fine_tuned["bge"], weights_only=False)
+            self._bge = {}
+        if which not in self._bge:
+            ck = torch.load(self.bundle_dir / self.fine_tuned[which], weights_only=False)
             OPT.update(ck["opt"])
             model = Scorer()
             model.load_state_dict(ck["state"])
-            self._bge = (model.eval(), AutoTokenizer.from_pretrained(OPT["model"]))
-        model, tok = self._bge
+            self._bge[which] = (model.eval(), AutoTokenizer.from_pretrained(OPT["model"]))
+        model, tok = self._bge[which]
 
         class _R:
             def __init__(self, v):
@@ -115,3 +121,66 @@ class Candidate:
         F = np.column_stack([context_features(rows, st[k]) for k in self.order] + [rows.X[:, self.extra_cols]])
         E = context_features(rows, st["marker"])
         return self.context(F), self.start(E), self.end(E)
+
+
+class CandidateTier(Candidate):
+    """Captions in, segments out: the candidate as the extension would call it.
+
+    Three encoders run per video, all on the CPU: MiniLM for the 395 features the linear detectors
+    and the sequence model read, potion-base-8M for the potion detector, and the fine-tuned
+    BGE-small for the sixth detector (and, in v2, the two edge models). BGE dominates the cost.
+    """
+
+    def __init__(self, path=DEFAULT, device: str | None = "cpu", budget: int = 10, v2: bool = True):
+        super().__init__(path, device)
+        self.budget, self.v2 = budget, v2
+        self._encoders = {}
+
+    def _encoder(self, kind: str):
+        if kind not in self._encoders:
+            if kind == "potion":
+                from model2vec import StaticModel
+                from features import ENCODERS
+                self._encoders[kind] = StaticModel.from_pretrained(ENCODERS["potion"][0])
+            else:
+                from sentence_transformers import SentenceTransformer
+                from features import MODEL_NAME
+                self._encoders[kind] = SentenceTransformer(MODEL_NAME, device=self.device)
+        return self._encoders[kind]
+
+    def rows_for(self, caps: dict):
+        from build_dataset import label_video
+        from features import embed_lines, video_features
+        from train import Rows
+        lines = label_video(caps, [])
+        texts = [r["text"] for r in lines]
+        duration = caps.get("duration") or 0.0
+        X = video_features(embed_lines(texts, self._encoder("minilm"), 128), lines, duration).astype(np.float32)
+        pot = video_features(embed_lines(texts, self._encoder("potion"), 128), lines, duration).astype(np.float32)
+        n = len(lines)
+        rows = Rows(X, np.zeros(n, dtype=np.int8), np.array([str(caps["videoID"])] * n),
+                    np.array([lines[0]["channel_id"]] * n),
+                    np.array([r["start"] for r in lines], dtype=np.float32), np.array(["live"] * n))
+        return rows, pot[:, :pot.shape[1] - 2], texts
+
+    def regions(self, caps: dict) -> list[tuple[int, int]]:
+        from edge_heads import place
+        from replay import regions_by_video
+        rows, pot, texts = self.rows_for(caps)
+        bge = self.ft_stream("bge", texts, rows.video)
+        ctx, ps, pe = self.score(rows, pot, bge)
+        if self.v2:
+            ps = (ps + self.ft_stream("edge_start", texts, rows.video)) / 2
+            pe = (pe + self.ft_stream("edge_resume", texts, rows.video)) / 2
+            th = self.thresholds_v2[self.budget]
+        else:
+            th = self.thresholds[self.budget]
+        placed = place(regions_by_video(ctx, rows, th, 1), rows, ps, pe)
+        return next(iter(placed.values()), []), rows
+
+    def segments(self, caps: dict) -> list[dict]:
+        spans, rows = self.regions(caps)
+        starts = rows.start_seconds
+        end_of = lambda j: float(starts[j]) if j < len(starts) else float(caps.get("duration") or starts[-1] + 3.0)
+        return [{"start": round(float(starts[a]), 2), "end": round(end_of(b), 2), "category": "sponsor"}
+                for a, b in spans]

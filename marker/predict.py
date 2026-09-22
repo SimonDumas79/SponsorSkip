@@ -264,7 +264,9 @@ def main() -> int:
     grade_cmd.add_argument("bundles", type=Path, nargs="+")
     serve = sub.add_parser("serve", help="read {videoID, channel, duration, lines:[{start,text}]} on stdin, "
                                          "write {segments} on stdout: how server/agents.mjs calls it")
-    serve.add_argument("--tier", choices=["free", "qwen"], default="free")
+    serve.add_argument("--tier", choices=["free", "qwen", "candidate"], default="free")
+    serve.add_argument("--budget", type=int, choices=[5, 10], default=10,
+                       help="candidate tier: seconds of real show it may lose per video")
     args = ap.parse_args()
     torch.set_num_threads(4)
     if args.cmd == "export":
@@ -272,7 +274,13 @@ def main() -> int:
     elif args.cmd == "serve":
         caps = json.loads(sys.stdin.buffer.read().decode("utf-8"))
         caps.setdefault("channel_id", caps.get("channel") or "unknown")
-        segments = FreeTier(device="cpu").segments(caps, args.tier) if caps.get("lines") else []
+        if not caps.get("lines"):
+            segments = []
+        elif args.tier == "candidate":
+            from serve_candidate import CandidateTier
+            segments = CandidateTier(device="cpu", budget=args.budget).segments(caps)
+        else:
+            segments = FreeTier(device="cpu").segments(caps, args.tier)
         sys.stdout.write(json.dumps({"segments": segments}))
     elif args.cmd == "run":
         caps = json.loads(args.captions.read_text(encoding="utf-8"))
