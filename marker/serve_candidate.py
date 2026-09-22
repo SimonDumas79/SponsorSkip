@@ -272,10 +272,21 @@ def check(which: str, limit: int) -> int:
     d = np.load(DATA / f"features_{which}.npz")
     texts = [text[(str(v), int(i))] for v, i in zip(d["video"], d["line"])]
     tier = CandidateTier(OUT, device="cpu")
-    bge = tier.ft_stream("bge", texts, rows.video)
-    fs = tier.ft_stream("edge_start", texts, rows.video)
-    fe = tier.ft_stream("edge_resume", texts, rows.video)
-    ctx, ps, pe = tier.score(rows, pot, bge)
+    # The offline side is gated exactly as serving is. Comparing a gated live path against an
+    # ungated offline one would report a difference that is the gate, not a bug in the path.
+    cheap = tier.cheap_streams(rows, pot)
+    mask = tier.gate_mask(cheap, rows) if tier.gated else None
+    g = tier.gate or {}
+    neutral = float(g.get("neutral", 0.0)) if tier.gated else 0.0
+    ns = float(g.get("neutral_start", 0.0)) if tier.gated else 0.0
+    ne = float(g.get("neutral_end", 0.0)) if tier.gated else 0.0
+    bge = tier.ft_stream("bge", texts, rows.video, mask, neutral)
+    fs = tier.ft_stream("edge_start", texts, rows.video, mask, ns)
+    fe = tier.ft_stream("edge_resume", texts, rows.video, mask, ne)
+    ctx, ps, pe = tier.score_from(rows, {**cheap, "bge": bge})
+    share = 1.0 if mask is None else float(mask.mean())
+    print(f"  the fine-tuned models read {share:.0%} of lines", flush=True)
+    print(flush=True)
     offline = place(regions_by_video(ctx, rows, tier.thresholds_v2[tier.budget], 1), rows,
                     (ps + fs) / 2, (pe + fe) / 2)
 
