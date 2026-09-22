@@ -60,6 +60,13 @@ If there is no sponsor read in these lines at all, answer {"start_line": null, "
 
 
 def ask_claude(text: str, model: str = "haiku", timeout: float = 120.0) -> dict | None:
+    try:
+        return _ask(text, model, timeout)
+    except subprocess.TimeoutExpired:   # one slow answer must not end the whole sweep (2026-09-22)
+        return None
+
+
+def _ask(text: str, model: str, timeout: float) -> dict | None:
     proc = subprocess.run(
         ["claude", "-p", "--model", model, "--tools", "", "--strict-mcp-config",
          "--no-session-persistence", "--output-format", "json"],
@@ -94,7 +101,7 @@ def label_video(caps: dict, model: str, verbose: bool = True) -> dict:
         if hi - lo < 12:
             break
         windows += 1
-        answer = ask_claude(f"{ASK}\n\n{render(lines, lo, hi)}")
+        answer = ask_claude(f"{ASK}\n\n{render(lines, lo, hi)}", model=model)   # before 2026-09-22 10:40 the model was never passed: every run was Haiku
         if not answer or answer.get("start_line") is None:
             continue
         start, end = answer.get("start_line"), answer.get("end_line")
