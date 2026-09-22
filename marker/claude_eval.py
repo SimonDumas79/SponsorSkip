@@ -52,7 +52,7 @@ def main() -> int:
     level1, level2, p_start, p_end = np.load(DATA / "pooled_oof.npy")
     bake = dict(np.load(CACHE))
     fs, fe = np.load(DATA / "finetune_oof_edge_start_seed0.npy"), np.load(DATA / "finetune_oof_edge_resume_seed0.npy")
-    labels = {r["videoID"]: r for r in json.load(open(DATA / "" + (sys.argv[1] if len(sys.argv) > 1 else "claude_labels_unseen_haiku.json") + "", encoding="utf-8"))}
+    labels = {r["videoID"]: r for r in json.load(open(DATA / (sys.argv[1] if len(sys.argv) > 1 else "claude_labels_unseen_haiku.json"), encoding="utf-8"))}
     have = np.array([str(v) in labels for v in rows.video])
     S = Rows(rows.X[have], rows.y[have], rows.video[have], rows.channel[have], rows.start_seconds[have],
              rows.split[have], rows.feature_names)

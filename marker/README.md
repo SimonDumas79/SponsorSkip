@@ -602,6 +602,16 @@ seeds): B = 5 49.8 / 56.5 / 49.8% vs 49.6 / 50.3 / 51.0% without it; B = 10 61.8
 qwen in (Simon's question from 2026-09-21): qwen catches **22.7% of all ad time that no other
 detector catches**; everything together catches 79.8% but would lose 66 s of show per video.
 
+### Fine-tuning the community T5 on our labels: worse (2026-09-22, `t5_finetune.py`, `t5ft_eval.py`)
+
+Warm-started from Xenova/sponsorblock-small, trained in its own chunk/target format on our labels
+(2 epochs, lr 5e-5, positives and negatives 50/50), channel-grouped 5-fold CV on the 160 unseen
+pooled videos. Alone: 64.9% of ad time at **34.3 s** lost per video (20% of videos over 60 s),
+against the original's 73.4% at 17.0 s. As the stack's seventh detector: 45.6-47.4% (B = 5) and
+49.9-58.1% (B = 10) against the original's 55.5-60.7% and 64.6-67.0%. 160 videos (~850 chunks per
+fold) are too few: it forgets what years of SponsorBlock data taught it and over-flags. Not adopted;
+the original community model stays as the detector.
+
 ## Notes worth keeping
 
 - **SponsorBlock's CSV dumps are switched off** (bandwidth); the hash-prefix API
