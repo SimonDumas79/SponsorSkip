@@ -92,7 +92,7 @@
       segments = pick(result);
       if (!quick.data.interim) return announce();
     }
-    const reading = { local: "SponsorSkip: reading the transcript on your GPU…", marker: "SponsorSkip: the free marker is reading the transcript…", "marker-qwen": "SponsorSkip: the marker is reading, your GPU checks each find…" };
+    const reading = { local: "SponsorSkip: reading the transcript on your GPU…", marker: "SponsorSkip: the free marker is reading the transcript…", "marker-candidate": "SponsorSkip: six detectors are reading the transcript…", "marker-qwen": "SponsorSkip: the marker is reading, your GPU checks each find…" };
     if (settings.enabled) toast(reading[settings.reader] ?? "SponsorSkip: Claude is reading the transcript…");
     reading = { step: "captions", label: "Fetching captions", segments: [] };
     const analyzing = send({ type: "analyze", id, reader: settings.reader, fresh });
