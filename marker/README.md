@@ -456,7 +456,8 @@ bake-off detectors + the fine-tuned run, one context model, pooled rule:
 At B = 10 every BGE seed beats every MiniLM seed (by about 4 points); at B = 5 the gap is smaller
 and mixed. The recipe tweaks stay in MiniLM's band. **Adopted: fine-tuned BGE-small as the sixth
 detector.** Serving cost: 33M parameters, 12 layers, about twice MiniLM-L6 per window (ONNX int8 and
-embedding each line once are the known ways back down). BGE-base (110M) is being tried next.
+embedding each line once are the known ways back down). **BGE-base (110M, 60 min per run) does not
+beat it**: line AP 0.752, stack 48.6% / 57.5% (seed 0), inside BGE-small's band at three times the size.
 
 With chapters and in English scope (three BGE seeds): + creator chapters 47.3-50.2% (B = 5) and
 58.2-60.0% (B = 10): +1.2 to +1.3 points at B = 10 in every seed, mixed at B = 5 (chapter spans
