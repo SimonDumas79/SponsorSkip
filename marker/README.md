@@ -525,6 +525,23 @@ segment before 2022-04. On the 160 pooled videos neither system has seen labels 
 more ad, at nearly twice our lost show, and breaks the 2% cap. It is a different trade-off, and
 a different view (long chunks, text extraction): `stack_sbml.py` tests it as a seventh detector.
 
+### The community model as a seventh detector: the biggest single gain (2026-09-22, `stack_sbml.py`)
+
+Its finds become a line score (the classifier's sponsor/self-promo probability on lines inside a
+find). Trained AND graded only on the 160 pooled videos whose labels postdate its training, so it
+cannot have learned our answers; channel-grouped 5-fold CV inside them; averaged edge heads:
+
+| BGE seed | stack + BGE, B = 5 / B = 10 | + community model, B = 5 / B = 10 |
+|---|---|---|
+| 0 | 50.1% / 53.1% | **60.7% / 64.6%** |
+| 1 | 51.3% / 59.8% | **55.5% / 66.3%** |
+| 2 | 51.9% / 55.2% | **59.3% / 67.0%** |
+
++4 to +11 points at B = 5 and +7 to +12 at B = 10 in every seed, within the rule (4.8-8.3 s lost per
+video). The two see different things (short line windows vs long extracted chunks), and the context
+model learns when to trust each. Cost: the community model is a 77M T5 plus a BERT classifier, about
+11 s per video on the GPU, so it belongs in a GPU tier, not the CPU free tier.
+
 ## Notes worth keeping
 
 - **SponsorBlock's CSV dumps are switched off** (bandwidth); the hash-prefix API

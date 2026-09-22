@@ -69,10 +69,17 @@ def main() -> int:
         F = [context_features(S, x[unseen]) for x in streams]
         without = oof_seeded(S, np.column_stack(F + [extra]), 0)
         with_sb = oof_seeded(S, np.column_stack(F + [context_features(S, sb[unseen]), extra]), 0)
+        np.save(DATA / f"stack_sbml_oof_s{seed}.npy", np.stack([without, with_sb]))
         for name, sc in (("stack + BGE (retrained on the 160)", without), ("stack + BGE + SponsorBlock model", with_sb)):
             g = graded(sweep_fine(sc, S, *heads), S)
             for b in (5, 10):
                 print(line(f"BGE s{seed} B={b:>2} {name}", pick(g, b)), flush=True)
+            # at the community model's own operating point: the most ad time with no more lost show than it (17.0 s)
+            ok = [x for x in g if x[2]["show"] <= 17.0]
+            best = max(ok, key=lambda x: x[2]["coverage"]) if ok else None
+            if best:
+                print(f"        at <= 17.0 s lost per video (the community model's cost): ad time {best[2]['coverage']:.1%} "
+                      f"at {best[2]['show']:.1f} s", flush=True)
         print()
     return 0
 
