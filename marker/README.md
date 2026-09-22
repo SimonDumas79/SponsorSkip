@@ -458,6 +458,10 @@ and mixed. The recipe tweaks stay in MiniLM's band. **Adopted: fine-tuned BGE-sm
 detector.** Serving cost: 33M parameters, 12 layers, about twice MiniLM-L6 per window (ONNX int8 and
 embedding each line once are the known ways back down). BGE-base (110M) is being tried next.
 
+With chapters and in English scope (three BGE seeds): + creator chapters 47.3-50.2% (B = 5) and
+58.2-60.0% (B = 10): +1.2 to +1.3 points at B = 10 in every seed, mixed at B = 5 (chapter spans
+spend lost-show budget). Graded on English videos only: 51.4-53.9% / 59.3-63.2%.
+
 ### Fine-tuned BGE start/resume models: more precise starts (2026-09-22, `edge_ft_eval.py`)
 
 `finetune_minilm.py --target start|resume --model BAAI/bge-small-en-v1.5` trains BGE on the same soft
