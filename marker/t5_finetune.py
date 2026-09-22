@@ -39,6 +39,15 @@ CAPS = {"features.npz": "captions", "features_tail.npz": "captions_tail", "featu
 
 
 def main() -> int:
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--lr", type=float, default=LR)
+    ap.add_argument("--epochs", type=int, default=EPOCHS)
+    ap.add_argument("--natural", action="store_true",
+                    help="keep every chunk (the real ~14%% share with a read) instead of balancing 50/50")
+    ap.add_argument("--out", default="t5ft_predictions.jsonl")
+    args = ap.parse_args()
+    out_path = DATA / args.out
     if sys.platform == "win32":
         ctypes.windll.kernel32.SetPriorityClass(ctypes.windll.kernel32.GetCurrentProcess(), 0x4000)
     torch.set_num_threads(4)
@@ -98,7 +107,7 @@ def main() -> int:
     clf = AutoModelForSequenceClassification.from_pretrained(CLASSIFIER).to(device).eval()
     labels = [clf.config.id2label[i].lower() for i in range(clf.config.num_labels)]
     prefix = CustomTokens.EXTRACT_SEGMENTS_PREFIX.value
-    OUT.write_text("", encoding="utf-8")
+    out_path.write_text("", encoding="utf-8")
     started = time.time()
     for f, fold in enumerate(np.array_split(channels, 5), 1):
         test_v = [v for v in videos if chan_of[v] in set(fold)]
@@ -106,15 +115,16 @@ def main() -> int:
         rng = np.random.default_rng(f)
         pos = [e for e in train_ex if e[2]]
         neg = [e for e in train_ex if not e[2]]
-        neg = [neg[i] for i in rng.permutation(len(neg))[:len(pos)]]
+        if not args.natural:
+            neg = [neg[i] for i in rng.permutation(len(neg))[:len(pos)]]
         data = pos + neg
         torch.manual_seed(0)
         model = AutoModelForSeq2SeqLM.from_pretrained(T5).to(device)
-        opt = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=0.01)
-        steps = EPOCHS * math.ceil(len(data) / BATCH)
+        opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=0.01)
+        steps = args.epochs * math.ceil(len(data) / BATCH)
         sched = torch.optim.lr_scheduler.LambdaLR(opt, lambda s: max(0.0, 1 - s / steps))
         model.train()
-        for epoch in range(EPOCHS):
+        for epoch in range(args.epochs):
             order = rng.permutation(len(data))
             for i in range(0, len(order), BATCH):
                 while game_running():
@@ -132,7 +142,7 @@ def main() -> int:
                 opt.step()
                 sched.step()
         model.eval()
-        with OUT.open("a", encoding="utf-8") as out, torch.no_grad():
+        with out_path.open("a", encoding="utf-8") as out, torch.no_grad():
             for v in test_v:
                 preds = their_predict.predict(v, model, tok, their_segment.SegmentationArguments(),
                                               words=[dict(w) for w in words_by_video[v]])
