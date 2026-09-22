@@ -92,7 +92,8 @@ def pairs(rows, texts: list[str]) -> list[tuple[str, str]]:
     return out
 
 
-OPT = {"model": MODEL_NAME, "epochs": EPOCHS, "window": WINDOW, "llrd": 0.0, "reinit": 0, "rdrop": 0.0}
+OPT = {"model": MODEL_NAME, "epochs": EPOCHS, "window": WINDOW, "llrd": 0.0, "reinit": 0, "rdrop": 0.0,
+       "max_tokens": MAX_TOKENS}
 # The experiment knobs (set from the command line in main; the defaults are the recipe of record):
 #   model   the encoder to fine-tune          epochs  passes over the training folds
 #   window  lines either side (0 = the line alone, so serving can embed each line once)
@@ -121,7 +122,7 @@ class Scorer(nn.Module):
 def encode(tok, batch: list[tuple[str, str]], device):
     seconds = [b for _, b in batch]
     enc = tok([a for a, _ in batch], None if seconds[0] is None else seconds, truncation="longest_first",
-              max_length=MAX_TOKENS, padding=True, return_tensors="pt")
+              max_length=OPT["max_tokens"], padding=True, return_tensors="pt")
     return (enc["input_ids"].to(device), enc["attention_mask"].to(device),
             enc.get("token_type_ids", torch.zeros_like(enc["input_ids"])).to(device))
 
@@ -235,6 +236,7 @@ def main() -> int:
     ap.add_argument("--llrd", type=float, default=0.0)
     ap.add_argument("--reinit", type=int, default=0)
     ap.add_argument("--rdrop", type=float, default=0.0)
+    ap.add_argument("--max-tokens", type=int, default=MAX_TOKENS, help="longer windows need more (BGE and MiniLM take 512)")
     ap.add_argument("--target", choices=["inside", "start", "resume"], default="inside",
                     help="inside a read (the recipe of record), or the soft start / resume line labels the edge heads use")
     ap.add_argument("--tag", default="", help="names the output: finetune_oof_<tag>_seed<seed>.npy (empty = the recipe of record)")
@@ -243,7 +245,7 @@ def main() -> int:
                          "examples .jsonl and feature .npz (for the row order); writes data/finetune_full_<tag>_seed<s>__<set>.npy")
     args = ap.parse_args()
     OPT.update(model=args.model, epochs=args.epochs, window=args.window, llrd=args.llrd, reinit=args.reinit,
-               rdrop=args.rdrop)
+               rdrop=args.rdrop, max_tokens=args.max_tokens)
     if sys.platform == "win32":
         ctypes.windll.kernel32.SetPriorityClass(ctypes.windll.kernel32.GetCurrentProcess(), 0x4000)
     torch.set_num_threads(4)
