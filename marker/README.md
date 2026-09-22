@@ -423,6 +423,19 @@ chosen tier-B videos Claude found a sponsor read in 1 (a 15 s read): about 4% la
 panel is clean enough to trust. Of the 4 videos the graded tier flagged, Claude found a read in
 none: they are genuine false alarms (the VideoProc tutorial among them).
 
+**The candidate on the panel** (`candidate.py --fresh features_negatives.npz`, 132 tier-B videos from
+129 channels, none in training; the shipped bundles over all 146 captioned videos):
+
+| system | no skip at all | mean skipped | > 10 s | > 60 s |
+|---|---|---|---|---|
+| candidate, B = 5 / B = 10 | 98% / 97% | 0.6 / 0.7 s | 2% / 3% | 0% |
+| candidate v2, B = 5 / B = 10 | 98% / 97% | 0.5 / 0.7 s | 2% | 0% |
+| graded free tier (shipped) | 94% | 1.8 s | 5% | 1% |
+| pooled free tier | 97% | 0.7 s | 3% | 0% |
+
+The candidate takes 10-20 more points of ad time on sponsored videos and is as clean as the best
+shipped bundle where there is no ad at all.
+
 ### Audits the rooms asked for (2026-09-22, `audits.py`)
 
 - **Channels**: 203 channels for 205 videos (2 with a second video), so channel-grouped folds are
