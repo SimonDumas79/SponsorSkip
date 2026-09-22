@@ -728,6 +728,38 @@ The cut is the reach score's 70th percentile on the POOLED data, stored in the b
 never judged against itself; a video with no ad in it simply sends fewer lines through. Serving
 applies it in `serve_candidate.CandidateTier.regions`.
 
+### Layer 3: Claude places the edges of the regions we found (2026-09-22, `cascade.py --edges`)
+
+The other half of Simon's design, and the first real gain since the community model. The cheap layers
+detect; Claude is asked, once per region, only where that region starts and ends. It is handed a
+window around the region and answers with two line numbers, and an answer outside the trust window
+falls back to the region, so a wild number cannot cut somewhere random.
+
+This is NOT Claude as a seventh detector, which was measured the same day and did nothing (64.4%
+against 64.6%). Detection was never Claude's advantage over the stack. Placement is.
+
+Holdout 4, 64 fresh videos, 93 regions found at B = 10, claude-haiku, 0 failed calls:
+
+| placement of the same regions | ad time | show lost | over 60 s | full reads |
+|---|---|---|---|---|
+| none (the raw region) | 53.1% | 3.3 s | 0.0% | 8% |
+| our averaged edge heads | 68.4% | 7.9 s | 0.0% | 38% |
+| **claude-haiku edges** | **71.2%** | **4.6 s** | 0.0% | **46%** |
+| Claude reading the whole video, for reference | 81.9% | 5.3 s | 1.6% | — |
+
+**Both axes at once**: 2.8 more points of ad time AND 42% less real show lost. Nothing else measured
+this month moved both. 59 of the 93 answers were taken; the rest fell outside the trust window or
+said there was no read there, and kept the heads' edges.
+
+What it costs. A full-transcript read on a median video from our corpus (17 min, 18,700 characters)
+was measured at $0.037 on Haiku and $0.074 on Sonnet, ~45 s each, and the extension sends two such
+calls per video. Layer 3 sends one window per region instead, about 1.5 regions per video at a few
+thousand characters: roughly a tenth of the text for the same model. It does not reach Claude reading
+the whole video (71.2% against 81.9%) but it loses less show doing it, and detection stays local.
+
+Worth noting against the raw row: the regions themselves only cover 53.1% of ad time. Placement is
+carrying 18 points, which is why the edges were the right place to spend a language model.
+
 ### The measured system was never the shipped system (2026-09-22, `export_candidate.py`, `serve_candidate.py`)
 
 Two days of gains lived only in evaluation code. `candidate.py` refits the six detectors on all

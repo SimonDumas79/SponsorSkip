@@ -253,7 +253,7 @@ def check(which: str, limit: int) -> int:
 
     from edge_heads import place
     from replay import regions_by_video
-    from train import DATA, load
+    from train import DATA, Rows, load
 
     from export_candidate import OUT, POTION
     rows = load(DATA / f"features_{which}.npz")
@@ -271,6 +271,14 @@ def check(which: str, limit: int) -> int:
                 text[(r["videoID"], r["i"])] = r["text"]
     d = np.load(DATA / f"features_{which}.npz")
     texts = [text[(str(v), int(i))] for v, i in zip(d["video"], d["line"])]
+    # Only the videos actually compared: the offline side runs the fine-tuned models on the CPU, and
+    # scoring the whole set to check five videos turned a two-minute check into twenty.
+    wanted = [str(v) for v in dict.fromkeys(rows.video)][:limit]
+    keep = np.isin(rows.video.astype(str), np.array(wanted))
+    rows = Rows(rows.X[keep], rows.y[keep], rows.video[keep], rows.channel[keep],
+                rows.start_seconds[keep], rows.split[keep], rows.feature_names)
+    pot = pot[keep]
+    texts = [t for t, k in zip(texts, keep) if k]
     tier = CandidateTier(OUT, device="cpu")
     # The offline side is gated exactly as serving is. Comparing a gated live path against an
     # ungated offline one would report a difference that is the gate, not a bug in the path.
@@ -290,7 +298,7 @@ def check(which: str, limit: int) -> int:
     offline = place(regions_by_video(ctx, rows, tier.thresholds_v2[tier.budget], 1), rows,
                     (ps + fs) / 2, (pe + fe) / 2)
 
-    vids = [str(v) for v in dict.fromkeys(rows.video)][:limit]
+    vids = wanted
     same = 0
     for vid in vids:
         caps = json.loads((DATA / "captions" / f"{vid}.json").read_text(encoding="utf-8"))
