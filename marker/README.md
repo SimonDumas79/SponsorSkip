@@ -578,7 +578,11 @@ community model's training; graded by our rule on the same videos:
 | **Claude Haiku** | **79.1%** | **9.3 s** | 5.0% |
 | community SponsorBlock model | 73.4% | 17.0 s | 6.9% |
 
-Claude finds more ad at about half the lost show. Both break the 2% over-60 s cap. As an extra
+Claude finds more ad at about half the lost show. Both break the 2% over-60 s cap. (Caveat found later
+the same day: `claude_label.py` read a failed call as "no read" until 13:05, so any failures in this
+Haiku run count as misses: its 79.1% is if anything an underestimate. A first "Sonnet" run of the same
+160 videos lost about half its answers that way, most likely to the subscription's usage limit, and is
+discarded, not reported.) As an extra
 detector in the stack (context model trained and graded on the 160, seed 0): + Claude 59.7% (B = 5) /
 67.8% (B = 10); + community model 60.7 / 64.6%; + both 51.8 / 65.5% (one seed, 160 videos: likely
 too many inputs for the data). The rule-bound stacks trade some of Claude's recall for staying
