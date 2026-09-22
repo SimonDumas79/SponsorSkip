@@ -400,6 +400,24 @@ rule. It is the first thing to try on the sponsor-free panel, where every false 
   48.8 / 53.1%: worse at one budget, better at the other, inside the band. Its own start/resume heads
   did not beat the shipped edge heads. Not adopted; worth one retry with the BGE stream as input.
 
+### Sponsor-free videos: false alarms are rare (2026-09-22, `sample_negatives.py`, `negatives_eval.py`)
+
+Every pooled video has a read, so the rule never saw a video that should be left alone.
+`sample_negatives.py` asks SponsorBlock's hash-prefix API for EVERY category and keeps videos with
+marks (intro, outro, filler...) but no sponsor or self-promotion; tier B has 2+ marks in 2+
+categories or a locked/upvoted one (621 candidates, 189 tier B; captions crawling). The saved
+bundles run end to end on them (first 57 tier-B videos, 44 English):
+
+| | no skip at all | mean skipped | > 10 s | > 60 s |
+|---|---|---|---|---|
+| graded free tier (`free_tier.pt`) | 93% | 2.6 s | 5% | 2% (one video) |
+| pooled free tier (`free_tier_pooled.pt`) | 98% | 0.3 s | 2% | 0% |
+
+Both pass the research round's target (>= 90% untouched, <= 5% over 10 s). The one bad case is
+104 s on a "How To Use VideoProc Converter" tutorial: a product-subject video, and possibly an
+unmarked sponsored one (Claude check pending). False alarms concentrate in product-talk videos,
+which is where hard negatives should come from. Updated as the crawl reaches 190.
+
 ## Notes worth keeping
 
 - **SponsorBlock's CSV dumps are switched off** (bandwidth); the hash-prefix API
