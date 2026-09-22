@@ -113,3 +113,37 @@ channels in none of the five sets: most were fetched by the same tail crawl on 2
 caption file in `marker/data/captions` whose channel is in none of the five sets, as built by
 `build_holdout4.sh` now; later crawl videos form a holdout 5. Nothing else changes: same systems, same
 fixed thresholds, graded once.
+
+## Result 2: holdout 4 (graded once, 2026-09-22 ~09:35; `data/prereg_holdout4.log`)
+
+64 videos from 64 channels, none in any other set; 72 reads; 22 English, 42 on machine-translated
+English tracks; 8 with SponsorBlock labels older than 2022-04.
+
+| system | B | ad time | show lost / video | over 60 s | English only |
+|---|---|---|---|---|---|
+| candidate (primary) | 5 | 53.3% | 9.0 s | 1.6% | 61.6% @ 6.8 s |
+| candidate (primary) | 10 | 64.6% | 11.2 s | 1.6% | 70.5% @ 6.9 s |
+| candidate v2 (averaged edge heads) | 5 | 46.5% | 4.2 s | 0.0% | 60.7% @ 4.8 s |
+| candidate v2 | 10 | 67.6% | 8.6 s | 0.0% | 72.9% @ 6.8 s |
+| candidate v3 (+ community model) | 5 | 52.3% | 2.4 s | 0.0% | 68.2% @ 0.7 s |
+| candidate v3 | 10 | 66.4% | 5.0 s | 0.0% | 71.1% @ 0.7 s |
+| graded free tier (shipped) | | 40.3% | 10.8 s | | |
+| pooled free tier | | 39.3% | 5.9 s | | |
+| cue patterns | | 30.1% | 13.0 s | | |
+| community SponsorBlock model (cut 0.5) | | 77.0% | 9.9 s | 3.1% | |
+| same, on the 56 videos labelled after its training | | 75.4% | 8.0 s | 3.6% | |
+
+Creator chapters add +0.7 to +1.4 points (these channels rarely title sponsor chapters).
+
+**Verdicts against the rule written in advance:**
+- **Candidate (primary): does not pass as registered.** It beats the shipped tier at both budgets
+  (+13.0 and +24.3 points) with at most 1.6% of videos over 60 s, but at B = 5 it lost 9.0 s of show
+  per video against ~5.0 s on pooled CV, outside the 3 s tolerance (B = 10: 11.2 vs ~8.5-9.0 s, inside).
+  The excess sits on the machine-translated tracks: English videos lost 6.8 s.
+- **Candidate v2: passes** (beats shipped at both budgets; 4.2 / 8.6 s lost, at or under CV; 0% over 60 s).
+- **Candidate v3: passes**, with the best cost: 52.3% at 2.4 s and 66.4% at 5.0 s, 0% over 60 s.
+- **The community SponsorBlock model skips the most ad** (75.4% on videos it cannot have trained on) at
+  8.0 s lost per video, but breaks the 2% cap (3.6% of videos over 60 s). At a similar cost (8-11 s)
+  it beats our v1 and v2 by about 8-10 points on these channels; v3, which includes it, trades some of
+  that for half the lost show and no video over 60 s. Its thresholds were fixed on pooled CV and were
+  conservative here (5.0 s used of a 10 s budget); they are not re-chosen on this set.
