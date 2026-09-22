@@ -234,6 +234,8 @@ def main() -> int:
     ap.add_argument("--llrd", type=float, default=0.0)
     ap.add_argument("--reinit", type=int, default=0)
     ap.add_argument("--rdrop", type=float, default=0.0)
+    ap.add_argument("--target", choices=["inside", "start", "resume"], default="inside",
+                    help="inside a read (the recipe of record), or the soft start / resume line labels the edge heads use")
     ap.add_argument("--tag", default="", help="names the output: finetune_oof_<tag>_seed<seed>.npy (empty = the recipe of record)")
     args = ap.parse_args()
     OPT.update(model=args.model, epochs=args.epochs, window=args.window, llrd=args.llrd, reinit=args.reinit,
@@ -242,9 +244,13 @@ def main() -> int:
         ctypes.windll.kernel32.SetPriorityClass(ctypes.windll.kernel32.GetCurrentProcess(), 0x4000)
     torch.set_num_threads(4)
     device = "cuda"
-    rows, _, _ = pooled()
+    rows, is_start, is_resume = pooled()
     data = pairs(rows, line_texts(rows))
-    y = rows.y.astype(np.float32)
+    if args.target == "inside":
+        y = rows.y.astype(np.float32)
+    else:
+        from edge_heads import soft
+        y = soft(is_start if args.target == "start" else is_resume, rows.video).astype(np.float32)
     tok = AutoTokenizer.from_pretrained(OPT["model"])
     print(f"pooled: {rows.videos} videos, {len(rows):,} lines, {int(y.sum()):,} inside a read; "
           f"{OPT}, seed {args.seed}", flush=True)

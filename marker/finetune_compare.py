@@ -37,7 +37,7 @@ def main() -> int:
     level1, level2, p_start, p_end = np.load(DATA / "pooled_oof.npy")
     bake = dict(np.load(CACHE))
     cache = dict(np.load(FT_CACHE)) if FT_CACHE.exists() else {}
-    runs = sorted(p.stem for p in DATA.glob("finetune_oof_*seed*.npy") if "partial" not in p.name)
+    runs = sorted(p.stem for p in DATA.glob("finetune_oof_*seed*.npy") if "partial" not in p.name and "edge_" not in p.name)
     names = [str(n) for n in rows.feature_names]
     extra = rows.X[:, [i for i, n in enumerate(names) if n.startswith("cue_") or n.startswith("desc_")]]
     parts = [level1, bake["meaning"], bake["structure"], bake["potion"], np.load(DATA / "sequence_oof_h32_r7.npy")]
