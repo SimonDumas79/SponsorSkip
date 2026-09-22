@@ -579,6 +579,14 @@ detector in the stack (context model trained and graded on the 160, seed 0): + C
 too many inputs for the data). The rule-bound stacks trade some of Claude's recall for staying
 under the cap.
 
+At Claude's own cost (<= 9.3 s) the stacks with Claude inside reach only 69.4-70.0% (the context model
+blurs Claude's exact segments); at the community model's cost (<= 17 s) 74.9-76.5%, level with it.
+Around Claude's segments instead (`claude_combo.py`): adding the stack's regions 79.6%, vetoing weak
+Claude segments 78.9%, both 79.5% at 8.9 s: nothing moves, and nothing gets under the 2% cap.
+Claude's 8 videos over 60 s are mostly false alarms (6 of 8), product talk again (a "leaving GitHub"
+video, a gadget review, a sports podcast, an "AI side hustle" video). Sonnet is being measured on
+the same 160 to see whether a stronger model removes them.
+
 ## Notes worth keeping
 
 - **SponsorBlock's CSV dumps are switched off** (bandwidth); the hash-prefix API
