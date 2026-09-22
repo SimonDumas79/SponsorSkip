@@ -87,3 +87,12 @@ videos older than that may be in its training set: reported, not hidden).
 
 **Pass.** The candidate skips more ad time than `free_tier.pt` at both budgets, show lost per video
 within 3 s of its pooled-CV figure, at most 2% of videos over 60 s. Graded once.
+
+**Added before holdout 4 exists (2026-09-22 ~07:25): candidate v2, reported beside the candidate.**
+Identical, except the edge heads are the average of the MLP start/resume heads and fine-tuned
+BGE-small start/resume models (`finetune_minilm.py --target start|resume`, trained on all pooled
+videos and scored on holdout 4). Its thresholds are its own pooled-CV rule choice on the
+stack + BGE seed 0 scores with averaged heads, fixed now: computed by `candidate.py` from the
+pooled out-of-fold scores, never from holdout 4. Pooled CV (three BGE stack seeds): 49.6-51.0%
+at B = 5 and 61.8-62.4% at B = 10, against 48.1-52.1% and 57.0-58.7% with the MLP heads alone.
+The original candidate stays the primary, pre-registered system.

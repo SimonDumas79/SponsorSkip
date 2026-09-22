@@ -488,6 +488,11 @@ The first thing to move the ~4 s start floor: fine-tuning is what the start mode
 cleaner labels. Ad time on the stack moves inconsistently (one seed); the averaged heads are the
 candidate to confirm with more seeds. Not in the pre-registered candidate.
 
+On the BGE stack (three stack seeds, one fine-tuned edge seed), averaging the MLP heads with the
+fine-tuned start/resume models: B = 10 62.0 / 62.4 / 61.8% against 58.7 / 57.3 / 57.0% (+3.3 to +5.1 in
+every seed), median start error 3.7-3.8 s -> 2.2-2.5 s; B = 5 mixed (49.6 / 50.3 / 51.0 against
+52.1 / 48.1 / 49.3). Pre-registered as candidate v2 for holdout 4.
+
 ## Notes worth keeping
 
 - **SponsorBlock's CSV dumps are switched off** (bandwidth); the hash-prefix API
