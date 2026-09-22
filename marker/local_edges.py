@@ -133,6 +133,10 @@ def main() -> int:
     ap.add_argument("--anchor-lines", type=int, default=0,
                     help="also show N lines from the video's own opening as a sample of its subject "
                          "and tone (0 = title only)")
+    ap.add_argument("--anchor-pre", type=int, default=0,
+                    help="Simon's refinement: instead of the opening, anchor on N lines from just "
+                         "before the ad started -- the show's actual topic at the moment it was "
+                         "interrupted, which a long or multi-part video's title may not describe")
     args = ap.parse_args()
     if not (args.same_prompt or args.walk):
         raise SystemExit("choose --same-prompt or --walk")
@@ -190,7 +194,15 @@ def main() -> int:
         if args.walk:
             if args.anchor:
                 extra = ""
-                if args.anchor_lines:
+                if args.anchor_pre:
+                    # 5-line buffer before lo, so the sample does not clip the ad's own lead-in.
+                    pre_hi = max(0, lo - 5)
+                    pre_lo = max(0, pre_hi - args.anchor_pre)
+                    sample = " ".join(l["text"] for l in lines[pre_lo:pre_hi])
+                    if sample:
+                        extra = (f'\nHere is what the show was actually talking about right before the '
+                                 f'ad started: "{sample}"\n')
+                elif args.anchor_lines:
                     opening = " ".join(l["text"] for l in lines[:args.anchor_lines])
                     extra = f'\nHere is a sample of the show, from its opening: "{opening}"\n'
                 base_ask = WALK_ASK_ANCHORED.format(title=titles.get(vid, "(untitled)"), extra=extra)
