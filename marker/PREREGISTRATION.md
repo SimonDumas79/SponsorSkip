@@ -105,3 +105,11 @@ and its thresholds come from channel-grouped CV over those 160 (`stack_sbml.py` 
 there 60.7% (B = 5) and 64.6% (B = 10), against 50.1% / 53.1% without it. Holdout-4 videos whose
 labels predate 2022-04 are reported separately (the community model may have trained on them).
 v3 needs the GPU (the community model is ~11 s per video); the primary system stays the candidate.
+
+**Amendment before holdout 4 is built or graded (2026-09-22 ~08:35).** YouTube's throttling makes the
+resumed tail crawl slow (16 attempts in an hour), and 64 caption files already on disk come from
+channels in none of the five sets: most were fetched by the same tail crawl on 2026-09-21 after holdout
+3 was built, and have never been used for training, tuning or grading. Holdout 4 is therefore every
+caption file in `marker/data/captions` whose channel is in none of the five sets, as built by
+`build_holdout4.sh` now; later crawl videos form a holdout 5. Nothing else changes: same systems, same
+fixed thresholds, graded once.
