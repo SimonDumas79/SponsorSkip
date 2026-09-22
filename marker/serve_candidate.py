@@ -368,8 +368,15 @@ def check(which: str, limit: int) -> int:
 
     vids = wanted
     same = 0
+    # The stored caption files predate the description field, but the feature files were built WITH
+    # descriptions and the stack reads two columns derived from them, so the live side has to be
+    # given the description the same way server/youtube.mjs now fetches it. Without this the check
+    # reports a difference that is a missing fixture, not a fault in the serving path.
+    desc_path = DATA / "descriptions.json"
+    descs = json.loads(desc_path.read_text(encoding="utf-8")) if desc_path.exists() else {}
     for vid in vids:
         caps = json.loads((DATA / "captions" / f"{vid}.json").read_text(encoding="utf-8"))
+        caps.setdefault("description", descs.get(vid))
         t0 = time.time()
         live, _ = tier.regions(caps)
         want = offline.get(vid, [])
