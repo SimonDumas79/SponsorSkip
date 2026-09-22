@@ -34,6 +34,8 @@ import ctypes
 import json
 import sys
 import threading
+import urllib.error
+import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
@@ -41,6 +43,7 @@ import torch
 
 from candidate import POTION, report
 from cascade import ASK as CLAUDE_ASK, parts
+from confirm_check import MODEL as OLLAMA_MODEL, OLLAMA, SCHEMA
 from edge_heads import AFTER, BEFORE, INSIDE, TAIL, place
 from qwen_edges import edge_window
 from replay import regions_by_video
@@ -72,6 +75,26 @@ The advertisement includes the host's turn into it ("but first", "this video is 
 Answer ONLY with JSON: {{"promo": true}} if the marked lines are still the advertisement, {{"promo": false}} if they have returned to the video's subject."""
 
 MAX_WALK = 30   # default; --max-walk overrides. How far past the region a walk may reach.
+
+
+def ask_bool_thinking(prompt: str, timeout: float = 180.0):
+    """Like confirm_check.ask_bool, but with reasoning ON. The walk asks a genuinely nuanced call
+    ("has the show resumed") and confirm_check.ask_bool forces an answer with think=False -- a
+    setting built for a cheaper yes/no (region confirmation), not this one. Returns (answer, the
+    reasoning text) so a run can be inspected instead of only graded.
+    """
+    body = json.dumps({
+        "model": OLLAMA_MODEL, "stream": False, "think": True, "format": SCHEMA, "keep_alive": "300s",
+        "options": {"num_ctx": 4096, "temperature": 0},
+        "messages": [{"role": "user", "content": prompt}],
+    }).encode()
+    req = urllib.request.Request(f"{OLLAMA}/api/chat", data=body, headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            msg = json.load(r)["message"]
+            return bool(json.loads(msg["content"])["promo"]), (msg.get("thinking") or "")[:600]
+    except (urllib.error.URLError, KeyError, ValueError, TimeoutError):
+        return None, None
 
 
 def window(lines: list[dict], lo: int, hi: int, a: int, b: int) -> str:
@@ -137,6 +160,11 @@ def main() -> int:
                     help="Simon's refinement: instead of the opening, anchor on N lines from just "
                          "before the ad started -- the show's actual topic at the moment it was "
                          "interrupted, which a long or multi-part video's title may not describe")
+    ap.add_argument("--think", action="store_true",
+                    help="let the walk's yes/no calls reason before answering (think=True), instead "
+                         "of the setting confirm_check.ask_bool uses for cheaper region confirmation. "
+                         "Writes a trace of every question and answer, so a run can be READ, not only "
+                         "graded.")
     args = ap.parse_args()
     if not (args.same_prompt or args.walk):
         raise SystemExit("choose --same-prompt or --walk")
@@ -184,6 +212,11 @@ def main() -> int:
     out, done = {}, 0
     calls = [0]
     lock = threading.Lock()
+    trace_f = None
+    if args.think:
+        trace_path = DATA / f"local_edges_trace_{args.set}_{stem}_B{args.budget}.jsonl"
+        trace_f = trace_path.open("a", encoding="utf-8")
+        print(f"  tracing every question/answer to {trace_path}", flush=True)
 
     def run(job):
         vid, base, n, lo, hi, back = job
@@ -218,10 +251,19 @@ def main() -> int:
             else:
                 base_ask = WALK_ASK
 
-            def ask(text: str, base_ask=base_ask) -> bool:
+            def ask(text: str, base_ask=base_ask, vid=vid, lo=lo, hi=hi) -> bool:
                 with lock:
                     calls[0] += 1
-                return bool(ask_bool(base_ask + "\n\n" + text))
+                full = base_ask + "\n\n" + text
+                if args.think:
+                    result, reasoning = ask_bool_thinking(full)
+                    if trace_f:
+                        with lock:
+                            trace_f.write(json.dumps({"video": vid, "region": [lo, hi], "window": text,
+                                                      "reasoning": reasoning, "answer": result}) + "\n")
+                            trace_f.flush()
+                    return bool(result)
+                return bool(ask_bool(full))
             span = walk_region(lines, lo, hi, args.group, args.patience, ask, args.max_walk)
         else:
             wlo, _, text = edge_window(lines, lo, hi)
@@ -247,6 +289,8 @@ def main() -> int:
                     print(f"  {done}/{n_regions} regions, {calls[0]} model calls", flush=True)
     finally:
         cache.write_text(json.dumps(saved, indent=1), encoding="utf-8")
+        if trace_f:
+            trace_f.close()
         unload()   # never leave qwen in VRAM
 
     print(f"  {done} regions, {calls} model calls\n", flush=True)
