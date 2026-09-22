@@ -132,6 +132,8 @@ def main() -> int:
     ap.add_argument("--fresh", help="a feature file (in marker/data) none of the pooled sets contain")
     ap.add_argument("--bge", help="fine-tuned BGE scores for the fresh rows (finetune_minilm.py --score)")
     ap.add_argument("--dry-run", type=int, help="pooled fold k plays the fresh set (mechanics check only)")
+    ap.add_argument("--edges", nargs=2, metavar=("START", "RESUME"),
+                    help="candidate v2: fine-tuned start/resume scores for the fresh rows, averaged with the MLP heads")
     args = ap.parse_args()
 
     rows, is_start, is_resume = pooled()
@@ -150,6 +152,11 @@ def main() -> int:
     g_cv = graded(sweep_fine(ft["stack_bge_seed0"], rows, p_start, p_end), rows)
     th = {b: pick(g_cv, b)[0] for b in (5, 10)}
     print(f"thresholds fixed on pooled CV: B=5 {th[5]:.4f}, B=10 {th[10]:.4f}")
+    fs_oof = np.load(DATA / "finetune_oof_edge_start_seed0.npy")
+    fe_oof = np.load(DATA / "finetune_oof_edge_resume_seed0.npy")
+    g_v2 = graded(sweep_fine(ft["stack_bge_seed0"], rows, (p_start + fs_oof) / 2, (p_end + fe_oof) / 2), rows)
+    th2 = {b: pick(g_v2, b)[0] for b in (5, 10)}
+    print(f"candidate v2 thresholds fixed on pooled CV: B=5 {th2[5]:.4f}, B=10 {th2[10]:.4f}")
 
     if args.dry_run is not None:
         channels = np.array(sorted(set(rows.channel)))
@@ -160,6 +167,7 @@ def main() -> int:
         sP = {k: v[~test] for k, v in streams_oof.items()}
         bge_T = bge_oof[test]
         isP, irP = is_start[~test], is_resume[~test]
+        fs_T, fe_T = fs_oof[test], fe_oof[test]
         ref = {b: pick(g_cv, b)[1] for b in (5, 10)}
         print(f"DRY RUN: pooled fold {args.dry_run} plays fresh ({T.videos} videos, {T.reads} reads); "
               f"its out-of-fold stack at the same thresholds, for reference:")
@@ -174,6 +182,7 @@ def main() -> int:
         assert len(bge_T) == len(T) and len(potT) == len(T)
         P, potP, sP = rows, pot_all, streams_oof
         isP, irP = is_start, is_resume
+        fs_T, fe_T = (np.load(args.edges[0]), np.load(args.edges[1])) if args.edges else (None, None)
         meta = json.loads((DATA / "watch_meta.json").read_text(encoding="utf-8")) if (DATA / "watch_meta.json").exists() else {}
         lang_path = DATA / "video_language.json"
         lang = json.loads(lang_path.read_text(encoding="utf-8")) if lang_path.exists() else None
@@ -197,6 +206,13 @@ def main() -> int:
         report(f"B={b:>2} candidate (stack + fine-tuned BGE)", kept, T, lang)
         if meta:
             report(f"B={b:>2}   + creator chapters", chapter_regions(kept, T, meta), T, lang)
+    if fs_T is not None:
+        print()
+        for b in (5, 10):
+            kept = place(regions_by_video(ctx, T, th2[b], 1), T, (ps_T + fs_T) / 2, (pe_T + fe_T) / 2)
+            report(f"B={b:>2} candidate v2 (averaged edge heads)", kept, T, lang)
+            if meta:
+                report(f"B={b:>2}   + creator chapters", chapter_regions(kept, T, meta), T, lang)
     return 0
 
 
