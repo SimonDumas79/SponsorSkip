@@ -261,6 +261,7 @@ export const AGENTS = {
   local: `${LOCAL_MODEL} (local GPU)`,
   claude: `claude-${CLAUDE_MODEL} (Claude Code)`,
   marker: "marker free tier (CPU, no language model)",
+  "marker-candidate": "marker candidate: six detectors + fine-tuned BGE (CPU)",
   "marker-qwen": `marker + ${LOCAL_MODEL} checks (local GPU)`,
 };
 
