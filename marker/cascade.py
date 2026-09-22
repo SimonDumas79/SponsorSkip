@@ -70,8 +70,22 @@ def texts_for(which: str, video: np.ndarray, line: np.ndarray) -> list[str]:
     return [text[(str(v), int(i))] for v, i in zip(video, line)]
 
 
-def streams(which: str, dev: str):
-    """The candidate's context and edge scores for a fresh set, from the shipped bundle."""
+def fine_tuned(c: Candidate, which: str, texts: list[str], video: np.ndarray):
+    """The three fine-tuned streams from the bundle's checkpoints, cached: two minutes on the card
+    each time otherwise, and every experiment here needs the same three."""
+    out = []
+    for name in ("bge", "edge_start", "edge_resume"):
+        cache = DATA / f"cascade_stream_{name}__{which}.npy"
+        if cache.exists():
+            out.append(np.load(cache))
+            continue
+        s = c.ft_stream(name, texts, video)
+        np.save(cache, s)
+        out.append(s)
+    return out
+
+
+def parts(which: str, dev: str):
     fresh = f"features_{which}.npz"
     T = load(DATA / fresh)
     pot = np.load(DATA / POTION[fresh])["X"]
@@ -79,9 +93,13 @@ def streams(which: str, dev: str):
     d = np.load(DATA / fresh)
     texts = texts_for(which, d["video"], d["line"])
     c = Candidate(OUT, device=dev)
-    bge = c.ft_stream("bge", texts, T.video)
-    fs = c.ft_stream("edge_start", texts, T.video)
-    fe = c.ft_stream("edge_resume", texts, T.video)
+    bge, fs, fe = fine_tuned(c, which, texts, T.video)
+    return c, T, pot, texts, bge, fs, fe
+
+
+def streams(which: str, dev: str):
+    """The candidate's context and edge scores for a fresh set, from the shipped bundle."""
+    c, T, pot, texts, bge, fs, fe = parts(which, dev)
     ctx, ps, pe = c.score(T, pot, bge)
     return c, T, texts, ctx, (ps + fs) / 2, (pe + fe) / 2
 
@@ -147,16 +165,7 @@ def smooth(x: np.ndarray, video: np.ndarray, w: int) -> np.ndarray:
 
 def run_gate(which: str, budget: int, dev: str) -> int:
     """Layers 1 -> 2: how much of the video does the expensive detector actually need to read?"""
-    fresh = f"features_{which}.npz"
-    T = load(DATA / fresh)
-    pot = np.load(DATA / POTION[fresh])["X"]
-    pot = pot[:, :pot.shape[1] - 2]
-    d = np.load(DATA / fresh)
-    texts = texts_for(which, d["video"], d["line"])
-    c = Candidate(OUT, device=dev)
-    bge = c.ft_stream("bge", texts, T.video)
-    fs = c.ft_stream("edge_start", texts, T.video)
-    fe = c.ft_stream("edge_resume", texts, T.video)
+    c, T, pot, texts, bge, fs, fe = parts(which, dev)
     st = c.streams(T, pot, bge)
 
     # The cheap sweep: the five detectors that are not the fine-tuned one, at their strongest point
