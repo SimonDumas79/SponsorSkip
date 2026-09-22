@@ -161,7 +161,11 @@ class CandidateTier(Candidate):
         lines = label_video(caps, [])
         texts = [r["text"] for r in lines]
         duration = caps.get("duration") or 0.0
-        X = video_features(embed_lines(texts, self._encoder("minilm"), 128), lines, duration).astype(np.float32)
+        # The description matters: the stack's context model reads two features derived from it
+        # (desc_hit_line, desc_hits_context). Serving without it would hand the model zeros where
+        # the graded run had real values, so it would not be the system that was measured.
+        X = video_features(embed_lines(texts, self._encoder("minilm"), 128), lines, duration,
+                           caps.get("description")).astype(np.float32)
         pot = video_features(embed_lines(texts, self._encoder("potion"), 128), lines, duration).astype(np.float32)
         n = len(lines)
         rows = Rows(X, np.zeros(n, dtype=np.int8), np.array([str(caps["videoID"])] * n),

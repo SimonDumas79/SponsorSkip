@@ -38,7 +38,14 @@ export function pickCaptionFile(files, videoId) {
 
 function run(cmd, args, cwd, timeoutMs = 90_000) {
   return new Promise((resolve, reject) => {
-    const child = spawn(cmd, args, { cwd, windowsHide: true });
+    // yt-dlp is Python: on Windows its stdout defaults to cp1252, and this pipe is read as UTF-8.
+    // Measured 2026-09-21 in the crawler: 100 of 169 descriptions came back mojibake or empty that
+    // way, silently. Force UTF-8 at the source.
+    const child = spawn(cmd, args, {
+      cwd,
+      windowsHide: true,
+      env: { ...process.env, PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" },
+    });
     let out = "";
     let err = "";
     const timer = setTimeout(() => child.kill(), timeoutMs);
@@ -64,20 +71,27 @@ export async function getTranscript(videoId, { python = process.env.SPONSORSKIP_
         "--write-subs", "--write-auto-subs", "--sub-langs", SUB_LANGS, "--sub-format", "json3",
         // chapters come free in the same call: a chapter the creator titled "Sponsor" is a read
         // they marked themselves, and in measurement it never once caused a false alarm.
-        "--print", "%(title)s\t%(duration)s\t%(channel)s\t%(language)s\t%(chapters)j",
+        // The description is JSON-encoded (%(...)j) because it contains newlines and tabs, which
+        // would otherwise break this tab-separated line. The marker's stack reads two features
+        // derived from it, so serving without it would not be the system that was graded.
+        "--print", "%(title)s\t%(duration)s\t%(channel)s\t%(language)s\t%(chapters)j\t%(description)j",
         "-o", "%(id)s.%(ext)s",
         `https://www.youtube.com/watch?v=${videoId}`,
       ],
       dir,
     );
-    const [title, duration, channel, language, chaptersJson] = out.trim().split("\n")[0].split("\t");
-    let chapters = null;
-    try {
-      const parsed = JSON.parse(chaptersJson);
-      chapters = Array.isArray(parsed) && parsed.length ? parsed : null;
-    } catch {
-      chapters = null;
-    }
+    const [title, duration, channel, language, chaptersJson, descriptionJson] = out.trim().split("\n")[0].split("\t");
+    const parseJsonField = (raw) => {
+      try {
+        return JSON.parse(raw);
+      } catch {
+        return null;
+      }
+    };
+    const parsedChapters = parseJsonField(chaptersJson);
+    const chapters = Array.isArray(parsedChapters) && parsedChapters.length ? parsedChapters : null;
+    const parsedDescription = parseJsonField(descriptionJson);
+    const description = typeof parsedDescription === "string" && parsedDescription ? parsedDescription : null;
     const file = pickCaptionFile(fs.readdirSync(dir), videoId);
     const transcript = file ? parseJson3(JSON.parse(fs.readFileSync(path.join(dir, file), "utf8"))) : null;
     return {
@@ -88,6 +102,7 @@ export async function getTranscript(videoId, { python = process.env.SPONSORSKIP_
       // "en" track is a machine translation, the class behind the worst video in every measured set.
       language: language && language !== "NA" ? language : null,
       chapters,
+      description,
       transcript: transcript?.length ? transcript : null,
       captionFile: file,
     };
