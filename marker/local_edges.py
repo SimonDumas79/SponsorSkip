@@ -59,7 +59,7 @@ The advertisement includes the host's turn into it ("but first", "this video is 
 
 Answer ONLY with JSON: {"promo": true} if the marked lines are still the advertisement, {"promo": false} if they are the show."""
 
-MAX_WALK = 30   # lines: a read does not extend further than this past where the region already reaches
+MAX_WALK = 30   # default; --max-walk overrides. How far past the region a walk may reach.
 
 
 def window(lines: list[dict], lo: int, hi: int, a: int, b: int) -> str:
@@ -72,10 +72,11 @@ def window(lines: list[dict], lo: int, hi: int, a: int, b: int) -> str:
     return "\n".join(out)
 
 
-def walk_region(lines: list[dict], lo: int, hi: int, group: int, patience: int, ask) -> tuple[int, int]:
+def walk_region(lines: list[dict], lo: int, hi: int, group: int, patience: int, ask,
+                max_walk: int = MAX_WALK) -> tuple[int, int]:
     """Step outward from the region in groups of `group` lines while the model still says 'advert'."""
     a, misses = lo, 0
-    while a > 0 and lo - a < MAX_WALK:
+    while a > 0 and lo - a < max_walk:
         nxt = max(0, a - group)
         if ask(window(lines, lo, hi, nxt, a)):
             a, misses = nxt, 0
@@ -87,7 +88,7 @@ def walk_region(lines: list[dict], lo: int, hi: int, group: int, patience: int, 
     if misses:
         a = min(lo, a + misses * group)   # give back the groups the walk ate on its way to stopping
     b, misses = hi, 0
-    while b < len(lines) and b - hi < MAX_WALK:
+    while b < len(lines) and b - hi < max_walk:
         nxt = min(len(lines), b + group)
         if ask(window(lines, lo, hi, b, nxt)):
             b, misses = nxt, 0
@@ -112,6 +113,8 @@ def main() -> int:
     ap.add_argument("--workers", type=int, default=4,
                     help="regions in parallel. A walk is sequential within a region, so this is the "
                          "only way to keep the card busy; ollama queues anything it cannot fit.")
+    ap.add_argument("--max-walk", type=int, default=MAX_WALK)
+    ap.add_argument("--tag", default="", help="names the cache, so settings do not overwrite each other")
     args = ap.parse_args()
     if not (args.same_prompt or args.walk):
         raise SystemExit("choose --same-prompt or --walk")
@@ -129,7 +132,8 @@ def main() -> int:
     from confirm_check import ask_bool, unload
     from qwen_edges import ask_edges
     tag = "walk" if args.walk else "same prompt"
-    cache = DATA / f"local_edges_{args.set}_{'walk' if args.walk else 'sameprompt'}_B{args.budget}.json"
+    stem = ('walk' if args.walk else 'sameprompt') + (f"_{args.tag}" if args.tag else "")
+    cache = DATA / f"local_edges_{args.set}_{stem}_B{args.budget}.json"
     saved = json.loads(cache.read_text(encoding="utf-8")) if cache.exists() else {}
     n_regions = sum(len(s) for s in found.values())
     print(f"{args.set}: {T.videos} videos, {T.reads} reads; {n_regions} regions at B={args.budget}. "
@@ -163,7 +167,7 @@ def main() -> int:
                 with lock:
                     calls[0] += 1
                 return bool(ask_bool(WALK_ASK + "\n\n" + text))
-            span = walk_region(lines, lo, hi, args.group, args.patience, ask)
+            span = walk_region(lines, lo, hi, args.group, args.patience, ask, args.max_walk)
         else:
             wlo, _, text = edge_window(lines, lo, hi)
             with lock:
