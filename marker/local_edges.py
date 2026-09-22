@@ -139,7 +139,9 @@ def main() -> int:
             heads = list(by_heads.get(vid, []))
             for k, (lo, hi) in enumerate(spans):
                 lo, hi = int(lo), int(hi)
-                back = heads[k] if k < len(heads) else (lo, hi)
+                # int() matters: heads[k] holds numpy ints and json.dumps refuses them. This is
+                # the second time that has cost a finished run (cascade.py, earlier today).
+                back = tuple(int(x) for x in heads[k]) if k < len(heads) else (lo, hi)
                 key = f"{vid}:{lo}-{hi}"
                 if key in saved:
                     out.setdefault(vid, []).append(tuple(saved[key]))
@@ -161,8 +163,9 @@ def main() -> int:
                         e0 = min(max(int(wlo) + int(a["end_line"]), s0 + 1), n)
                         if lo - BEFORE <= s0 <= lo + INSIDE and hi - TAIL <= e0 <= hi + AFTER:
                             span = (s0, e0)
+                span = (int(span[0]), int(span[1]))
                 saved[key] = list(span)
-                out.setdefault(vid, []).append(tuple(span))
+                out.setdefault(vid, []).append(span)
                 done += 1
                 if done % 10 == 0:
                     cache.write_text(json.dumps(saved, indent=1), encoding="utf-8")
