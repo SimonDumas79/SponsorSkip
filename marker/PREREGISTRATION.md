@@ -163,3 +163,33 @@ threshold to choose), so it is reported as a measurement, not as a pass/fail:
 Sonnet found a read in 57 of 64 videos and, on the 22 English ones, took 85.5% of ad time at 6.9 s.
 It is the best reader measured, above the community model on both axes and inside the 2% cap the
 community model breaks.
+
+## Pre-registration 3: the cascade (written 2026-09-22 ~15:30, NOT yet graded)
+
+**What is registered.** The marker's six detectors find the regions (the cheap five gating the
+fine-tuned three at a 30% share, as `export_candidate.py` stores it), and claude-haiku is asked, once
+per region, only where that region starts and ends. An answer is used only if it lands within 20
+lines before the region's start / 10 lines into it, and symmetrically at the end; anything else, and
+any failed call, keeps the marker's own averaged edge heads. Creator chapters apply as usual.
+
+**Thresholds are being fixed now, on the pooled 205 videos**, by the written rule (most ad time
+subject to the show budget, at most 2% of videos over 60 s), over out-of-fold stack scores with
+Claude's edges in place (`cascade_pooled.py`, shares 0.012 / 0.02 / 0.03). They are written to
+`data/cascade_thresholds.json` before any fresh set is touched.
+
+**Why a new set is needed, and why it does not exist yet.** The 71.2% at 4.6 s that made this look
+worth shipping was measured on holdout 4, and the idea was then developed against that same set (the
+B = 5 run, the local-model comparison). Holdout 4 is therefore a DEVELOPMENT set for the cascade, not
+a grade, and its number must not be quoted as one. Holdout 3 cannot stand in: it is 10 videos and 15
+reads, a confidence interval of roughly ±25 points, which cannot decide anything.
+
+So the cascade's grade waits on new videos. YouTube refused this address today at 45 s and at 180 s
+between videos, after a 10-minute cool-off, so the crawl is rescheduled with a 90-minute cool-off and
+4 minutes between videos.
+
+**Registered in advance**: holdout 5 is every caption file whose channel appears in none of
+`features.npz`, `features_tail.npz`, `features_holdout2.npz`, `features_holdout3.npz`,
+`features_channels.npz`, `features_holdout4.npz`, built once the crawl has 40 or more such videos.
+Graded once, with the thresholds above, against: the shipped free tier, the candidate with our own
+edge heads, and the cascade. The comparison that decides whether the cascade ships is the cascade
+against the candidate **on that set**, not on holdout 4.
