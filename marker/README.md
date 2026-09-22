@@ -182,6 +182,47 @@ only 26% of ad time. `replay.py` reports `ad cov` (share of all ad seconds skipp
 beside recall, and the system is chosen to maximise ad time skipped under a
 budget of real show lost per video, with a cap on the worst single video.
 
+### Not marking, or wrong length? (2026-09-21, `error_budget.py`)
+
+Pooled out-of-fold scores, 205 videos, 280 reads, free tier at the pooled rule's
+B = 10 threshold (0.982): 43.4% of ad time skipped, 6.2 s of show lost per video.
+
+| Ad time NOT skipped, share of all ad time | |
+|---|---|
+| reads never marked at all (134 of 280, median 26 s) | 36.1% |
+| found, but the skip starts late | 14.1% |
+| found, but the skip ends early | 4.9% |
+| holes inside found reads | 1.5% |
+
+**Mostly not marking, but the marker did see them.** Of the 134 unmarked reads,
+101 have a line the marker scores >= 0.84; only 13 (2.5% of ad time) never pass
+0.5. The context model's threshold throws them away, and the threshold is that
+high because of false alarms: 18 regions in 17 videos, all content ABOUT products
+(a Pixel review, a watch roundup, a Monopoly history, a scam-exposure video, a
+Game Pass debate). Lost show splits 53% overshoot around real reads, 47% false
+alarms. Found reads get a median 61% of their time skipped; the missing part is
+mostly the START: 31 regions begin more than 20 lines after the true start (out of
+the start head's reach, 29 min of ad) and 66 have the true start in reach but the
+head picks the wrong line (15 min).
+
+**Ceilings** (threshold rechosen by the same rule with one stage made perfect):
+
+| | ad time | show lost / video |
+|---|---|---|
+| as shipped | 43.4% | 6.2 s |
+| perfect ends only | 49.8% | 5.2 s |
+| perfect yes/no checker only (no false alarms; threshold drops to 0.943) | 58.7% | 6.8 s |
+| perfect starts only | 62.8% | 4.9 s |
+| perfect edges on found reads | 68.2% | 3.8 s |
+| perfect checker AND edges (74% of reads touched at the loosest threshold) | 82.0% | 0.0 s |
+
+**Wider start search, measured and rejected**: 20 -> 30 lines before the region
+gives 45.1% (+1.7, noise); 40 or 60 lines give 37-41% because on a false region the
+wider reach widens the damage and the rule pushes the threshold up. Every free
+lever pays this tax. The headroom is in a checker that removes false alarms and
+places starts, which is Claude's job (15 of 15 reads, 1.3 s median start error)
+and partly qwen's (the qwen tier's 63.4% on both holdouts sits inside this ceiling).
+
 ## Notes worth keeping
 
 - **SponsorBlock's CSV dumps are switched off** (bandwidth); the hash-prefix API
