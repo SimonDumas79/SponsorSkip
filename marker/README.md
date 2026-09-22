@@ -439,6 +439,25 @@ none: they are genuine false alarms (the VideoProc tutorial among them).
 - **Start error vs caption gaps**: Spearman +0.04 on 72 agreed reads; the ~4 s start floor is not a
   caption-gap effect.
 
+### BGE-small beats MiniLM as the fine-tuned detector; recipe tweaks do not (2026-09-22, `finetune_compare.py`)
+
+Same recipe (2 epochs, line + 8 lines either side), only the encoder changed. Stack = the five
+bake-off detectors + the fine-tuned run, one context model, pooled rule:
+
+| fine-tuned run | line AP | stack B = 5 | stack B = 10 |
+|---|---|---|---|
+| MiniLM-L6, seeds 0 / 1 / 2 | 0.676 / 0.686 / 0.660 | 48.8 / 48.5 / 47.3% | 53.1 / 52.8 / 53.7% |
+| **BAAI/bge-small-en-v1.5, seeds 0 / 1 / 2** | **0.730 / 0.747 / 0.732** | **52.1 / 48.1 / 49.3%** | **58.7 / 57.3 / 57.0%** |
+| MiniLM + layer-wise LR decay 0.9 | 0.678 | 48.0% | 56.9% |
+| MiniLM + R-Drop (alpha 5) | 0.697 | 50.1% | 53.3% |
+| MiniLM + top 2 layers re-initialised, 4 epochs | 0.657 | 49.9% | 56.3% |
+| MiniLM, single line (window 0) | 0.372 | 46.1% | 56.5% |
+
+At B = 10 every BGE seed beats every MiniLM seed (by about 4 points); at B = 5 the gap is smaller
+and mixed. The recipe tweaks stay in MiniLM's band. **Adopted: fine-tuned BGE-small as the sixth
+detector.** Serving cost: 33M parameters, 12 layers, about twice MiniLM-L6 per window (ONNX int8 and
+embedding each line once are the known ways back down). BGE-base (110M) is being tried next.
+
 ## Notes worth keeping
 
 - **SponsorBlock's CSV dumps are switched off** (bandwidth); the hash-prefix API
