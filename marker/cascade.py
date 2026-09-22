@@ -104,7 +104,7 @@ def streams(which: str, dev: str):
     return c, T, texts, ctx, (ps + fs) / 2, (pe + fe) / 2
 
 
-def run_edges(which: str, model: str, workers: int, budget: int, dev: str) -> int:
+def run_edges(which: str, model: str, workers: int, budget: int, dev: str, local: bool = False) -> int:
     c, T, texts, ctx, ps, pe = streams(which, dev)
     lines_by_video = {}
     for v in np.unique(T.video):
@@ -115,9 +115,10 @@ def run_edges(which: str, model: str, workers: int, budget: int, dev: str) -> in
     found = regions_by_video(ctx, T, th, 1)
     jobs = [(vid, lo, hi) for vid, spans in found.items() for lo, hi in spans]
     print(f"{which}: {T.videos} videos, {T.reads} reads; the cheap layers found {len(jobs)} regions "
-          f"at B={budget} (threshold {th:.4f}). Asking claude-{model} where each one starts and ends.", flush=True)
+          f"at B={budget} (threshold {th:.4f}).", flush=True)
 
-    cache = DATA / f"cascade_edges_{which}_{model}_B{budget}.json"
+    who = "qwen" if local else f"claude-{model}"
+    cache = DATA / f"cascade_edges_{which}_{who}_B{budget}.json"
     answers = json.loads(cache.read_text(encoding="utf-8")) if cache.exists() else {}
 
     def one(job):
@@ -126,7 +127,12 @@ def run_edges(which: str, model: str, workers: int, budget: int, dev: str) -> in
         if key in answers:
             return
         wlo, whi, text = edge_window(lines_by_video[vid], lo, hi)
-        a = ask_claude(f"{ASK}\n\n{text}", model=model)
+        if local:
+            from qwen_edges import ASK as LOCAL_ASK, ask_edges
+            a = ask_edges(f"{LOCAL_ASK}\n\n{text}")
+            a = a if a is not None else {"_error": "ollama"}
+        else:
+            a = ask_claude(f"{ASK}\n\n{text}", model=model)
         if isinstance(a, dict) and "_error" in a:
             # A failed call must never read as "no read here": it is recorded as a failure and the
             # region keeps the heads' edges, rather than silently looking like a cautious answer.
@@ -148,7 +154,7 @@ def run_edges(which: str, model: str, workers: int, budget: int, dev: str) -> in
     print(f"  {len(answers)} answers: {used} edges taken, {blank} said no read here, {failed} FAILED\n", flush=True)
 
     report(f"B={budget:>2} regions with our averaged heads", place(found, T, ps, pe), T)
-    report(f"B={budget:>2} regions with claude-{model} edges", placed, T)
+    report(f"B={budget:>2} regions with {who} edges", placed, T)
     report(f"B={budget:>2} regions unplaced (raw)", found, T)
     return 0
 
@@ -196,10 +202,11 @@ def main() -> int:
     ap.add_argument("--model", default="haiku")
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--budget", type=int, choices=[5, 10], default=10)
+    ap.add_argument("--local", action="store_true", help="layer 3 on the local GPU (qwen) instead of Claude")
     args = ap.parse_args()
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     if args.edges:
-        return run_edges(args.set, args.model, args.workers, args.budget, dev)
+        return run_edges(args.set, args.model, 1 if args.local else args.workers, args.budget, dev, args.local)
     if args.gate:
         return run_gate(args.set, args.budget, dev)
     raise SystemExit("choose --edges or --gate")
