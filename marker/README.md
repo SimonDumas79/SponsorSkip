@@ -598,7 +598,12 @@ windows):
 Sonnet takes 4 points more ad time while losing 4 s less show per video, and breaks the 60 s cap
 less often: the best reader measured, and better than the community model on both axes. Its cost is
 subscription usage, not latency (about 7 s per window either way). Switching the extension's default
-(`server/agents.mjs`, `SPONSORSKIP_MODEL`) is Simon's call. As an extra
+(`server/agents.mjs`, `SPONSORSKIP_MODEL`) is Simon's call.
+
+**On holdout 4** (the fresh 64 channels, graded with everything else): Sonnet 81.9% of ad time at
+5.3 s lost per video, 1.6% of videos over 60 s, a read found in 57 of 64; English only 85.5% at
+6.9 s. The community model on the same videos: 77.0% at 9.9 s, 3.1% over 60 s. Sonnet is the best
+reader measured, on both axes, and the only strong one inside the 2% cap. As an extra
 detector in the stack (context model trained and graded on the 160, seed 0): + Claude 59.7% (B = 5) /
 67.8% (B = 10); + community model 60.7 / 64.6%; + both 51.8 / 65.5% (one seed, 160 videos: likely
 too many inputs for the data). The rule-bound stacks trade some of Claude's recall for staying

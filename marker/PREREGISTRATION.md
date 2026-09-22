@@ -147,3 +147,19 @@ Creator chapters add +0.7 to +1.4 points (these channels rarely title sponsor ch
   it beats our v1 and v2 by about 8-10 points on these channels; v3, which includes it, trades some of
   that for half the lost show and no video over 60 s. Its thresholds were fixed on pooled CV and were
   conservative here (5.0 s used of a 10 s budget); they are not re-chosen on this set.
+
+**Added after the graded look (2026-09-22 14:15): the readers on the same 64 videos.** Not
+pre-registered, and nothing here is tuned on this set (a reader answers directly; there is no
+threshold to choose), so it is reported as a measurement, not as a pass/fail:
+
+| reader | ad time | show lost / video | over 60 s |
+|---|---|---|---|
+| **Claude Sonnet** (`claude_label.py --model sonnet`, 0 failed windows) | **81.9%** | **5.3 s** | 1.6% |
+| community SponsorBlock model (cut 0.5) | 77.0% | 9.9 s | 3.1% |
+| candidate v2 (free tier) | 67.6% | 8.6 s | 0.0% |
+| candidate v3 (free tier + community model) | 66.4% | 5.0 s | 0.0% |
+| graded free tier (shipped) | 40.3% | 10.8 s | |
+
+Sonnet found a read in 57 of 64 videos and, on the 22 English ones, took 85.5% of ad time at 6.9 s.
+It is the best reader measured, above the community model on both axes and inside the 2% cap the
+community model breaks.
