@@ -25,7 +25,7 @@ HERE = Path(__file__).parent
 DATA = HERE / "data"
 OUT = DATA / "descriptions.json"
 SETS = ("features.npz", "features_tail.npz", "features_holdout2.npz", "features_holdout3.npz",
-        "features_channels.npz")
+        "features_channels.npz", "features_holdout4.npz")
 FLAGS = subprocess.BELOW_NORMAL_PRIORITY_CLASS | subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 
 

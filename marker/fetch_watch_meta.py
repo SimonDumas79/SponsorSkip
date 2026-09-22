@@ -30,7 +30,7 @@ import numpy as np
 HERE = Path(__file__).parent
 DATA = HERE / "data"
 OUT = DATA / "watch_meta.json"
-SETS = ("features.npz", "features_tail.npz", "features_holdout2.npz", "features_channels.npz")
+SETS = ("features.npz", "features_tail.npz", "features_holdout2.npz", "features_channels.npz", "features_holdout4.npz")
 HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
                          "Chrome/140.0 Safari/537.36",
            "Accept-Language": "en-US,en;q=0.9", "Cookie": "CONSENT=YES+1"}

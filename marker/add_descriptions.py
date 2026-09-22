@@ -19,7 +19,7 @@ HERE = Path(__file__).parent
 DATA = HERE / "data"
 PAIRS = {"features.npz": "examples.jsonl", "features_tail.npz": "examples_tail.jsonl",
          "features_holdout2.npz": "examples_holdout2.jsonl", "features_holdout3.npz": "examples_holdout3.jsonl",
-         "features_channels.npz": "examples_channels.jsonl"}
+         "features_channels.npz": "examples_channels.jsonl", "features_holdout4.npz": "examples_holdout4.jsonl"}
 
 
 def main() -> int:

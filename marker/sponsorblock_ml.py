@@ -36,7 +36,8 @@ SRC = DATA / "sponsorblock-ml" / "src"
 OUT = DATA / "sbml_predictions.jsonl"
 T5, CLASSIFIER = "Xenova/sponsorblock-small", "EColi/SB_Classifier"
 SETS = [("features.npz", "captions"), ("features_tail.npz", "captions_tail"),
-        ("features_holdout2.npz", "captions"), ("features_channels.npz", "captions_channels")]
+        ("features_holdout2.npz", "captions"), ("features_channels.npz", "captions_channels"),
+        ("features_holdout4.npz", "captions")]
 LAST_LINE_SECONDS = 2.2
 
 
