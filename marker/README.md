@@ -636,6 +636,40 @@ against the original's 73.4% at 17.0 s. As the stack's seventh detector: 45.6-47
 fold) are too few: it forgets what years of SponsorBlock data taught it and over-flags. Not adopted;
 the original community model stays as the detector.
 
+### The measured system was never the shipped system (2026-09-22, `export_candidate.py`, `serve_candidate.py`)
+
+Two days of gains lived only in evaluation code. `candidate.py` refits the six detectors on all
+pooled rows, scores a fresh feature file and prints a table; `finetune_minilm.py` trained the BGE
+detector, wrote its per-line scores and **threw the weights away**. So every result could be
+re-measured and none of it could read a new video. `predict.py serve`, which is what the extension
+calls, still loaded `free_tier.pt`: the linear marker, one context model and two edge heads, the
+system from before the stack and the fine-tune.
+
+On holdout 4, the same 64 fresh videos and the same grader:
+
+| system | ad time skipped | show lost per video | worst single video |
+|---|---|---|---|
+| cue patterns, no model | 30.1% | 13.0 s | 65 s |
+| **`free_tier.pt`, what the extension serves** | **40.3%** | **10.8 s** | **177 s** |
+| `free_tier_pooled.pt` | 39.3% | 5.9 s | 63 s |
+| candidate v2 B = 10 + chapters | 67.8% | 8.4 s | none over 60 s |
+| **candidate v3 B = 10 + chapters** | **67.2%** | **5.5 s** | **none over 60 s** |
+
+27 points of ad time and half the show loss, already paid for and never delivered. No experiment in
+the last day moved the number by more than 2 points, so this is worth more than the whole remaining
+search.
+
+The export path: `finetune_minilm.py --train-only --save-model` writes the checkpoint,
+`marker/data/export_chain.sh` runs it for the three fine-tuned models (inside, start, resume),
+`export_candidate.py` trains the five CPU parts and the stack on all pooled rows and saves one
+bundle, and `serve_candidate.py` loads it. `export_candidate.py --verify holdout4` scores holdout 4
+**through the saved bundle** and checks it against the numbers above: a bundle that does not
+reproduce the grade is not the system that was graded.
+
+Serving cost beyond the old free tier: the potion embedding (8M) and fine-tuned BGE-small (33M, one
+17-line window per line), both CPU. v3 adds the community T5 on top, about a minute per 35-minute
+video.
+
 ## Notes worth keeping
 
 - **SponsorBlock's CSV dumps are switched off** (bandwidth); the hash-prefix API
