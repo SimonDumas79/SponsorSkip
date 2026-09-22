@@ -67,6 +67,16 @@ def potion_pooled() -> np.ndarray:
     return pot[:, :pot.shape[1] - 2]
 
 
+def smooth(x: np.ndarray, video: np.ndarray, w: int) -> np.ndarray:
+    """Rolling maximum over w lines either side, within a video: the cheap layers' reach."""
+    out = np.zeros(len(x), dtype=np.float32)
+    for v in np.unique(video):
+        r = np.flatnonzero(video == v)
+        a = x[r]
+        out[r] = [a[max(0, i - w):i + w + 1].max() for i in range(len(a))]
+    return out
+
+
 def linear_state(parts) -> list[dict]:
     return [{"columns": torch.from_numpy(p["columns"]), "mean": torch.from_numpy(p["mean"]),
              "std": torch.from_numpy(p["std"]), "state": p["model"].state_dict()} for p in parts]
@@ -119,6 +129,18 @@ def build() -> int:
     start_head = fit_stage2(EP, soft(is_start, rows.video), hidden=32)
     end_head = fit_stage2(EP, soft(is_resume, rows.video), hidden=32)
 
+    # Simon's first layer, fixed here rather than per video: the cheap five sweep, and only the
+    # lines they see something near go to the fine-tuned model. Measured on holdout 4 (cascade.py
+    # --gate): a fifth of the lines gives 68.3% of ad time against 68.4% for reading every line, and
+    # a tenth breaks it (62.2%). The cut is the reach score's 80th percentile on the pooled data, so
+    # a video is not judged against itself.
+    cheap = np.max(np.column_stack([streams_oof[k] for k in
+                                    ("marker", "meaning", "structure", "potion", "sequence")]), axis=1)
+    reach = smooth(cheap, rows.video, 15)
+    gate = {"cut": float(np.quantile(reach, 0.80)), "neutral": float(np.median(bge_oof)), "window": 15, "share": 0.20}
+    print(f"  gate: the fine-tuned model reads a line only within 15 lines of a cheap score "
+          f"over {gate['cut']:.4f}; elsewhere it takes {gate['neutral']:.4f}", flush=True)
+
     missing = [p for p in ("bge.pt", "edge_start.pt", "edge_resume.pt") if not (MODELS / p).exists()]
     OUT.parent.mkdir(parents=True, exist_ok=True)
     torch.save({
@@ -128,7 +150,7 @@ def build() -> int:
                      **SEQ},
         "stages": {"context": stage_state(ctx), "start": stage_state(start_head), "end": stage_state(end_head)},
         "context_inputs": FP.shape[1], "edge_inputs": EP.shape[1], "extra_cols": extra_cols,
-        "order": ORDER, "thresholds": th, "thresholds_v2": th2,
+        "order": ORDER, "thresholds": th, "thresholds_v2": th2, "gate": gate,
         "fine_tuned": {k: str((MODELS / f"{k}.pt").relative_to(BUNDLE.parent)) for k in ("bge", "edge_start", "edge_resume")},
         "trained_on": f"{rows.videos} pooled videos, {rows.reads} reads",
     }, OUT)

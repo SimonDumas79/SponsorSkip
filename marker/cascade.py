@@ -41,7 +41,7 @@ from candidate import POTION, report
 from claude_label import ask_claude
 from context_stack import context_features
 from edge_heads import place, place_from_answers
-from export_candidate import OUT
+from export_candidate import OUT, smooth
 from qwen_edges import edge_window
 from replay import regions_by_video
 from serve_candidate import Candidate
@@ -162,16 +162,6 @@ def run_edges(which: str, model: str, workers: int, budget: int, dev: str, local
     return 0
 
 
-def smooth(x: np.ndarray, video: np.ndarray, w: int) -> np.ndarray:
-    """Rolling maximum over w lines either side, within a video: the cheap layers' reach."""
-    out = np.zeros(len(x), dtype=np.float32)
-    for v in np.unique(video):
-        r = np.flatnonzero(video == v)
-        a = x[r]
-        out[r] = [a[max(0, i - w):i + w + 1].max() for i in range(len(a))]
-    return out
-
-
 def run_gate(which: str, budget: int, dev: str) -> int:
     """Layers 1 -> 2: how much of the video does the expensive detector actually need to read?"""
     c, T, pot, texts, bge, fs, fe = parts(which, dev)
@@ -194,6 +184,20 @@ def run_gate(which: str, budget: int, dev: str) -> int:
         g = c.score(T, pot, gated)
         kept = place(regions_by_video(g[0], T, c.thresholds_v2[budget], 1), T, (g[1] + fs) / 2, (g[2] + fe) / 2)
         report(f"B={budget:>2} gate {share:.0%} of lines to the fine-tuned model", kept, T)
+
+    # The edge models are the other two thirds of the expensive work. Their scores only matter near a
+    # region, and a region only exists inside the gate, so gating them should be free -- but `place`
+    # searches 20 lines beyond a region and the gate reaches 15, so it is measured, not assumed.
+    print(flush=True)
+    for share in (0.30, 0.20):
+        cut = float(np.quantile(reach, 1 - share))
+        inside = reach >= cut
+        gated = np.where(inside, bge, neutral)
+        ns, ne = float(np.median(fs)), float(np.median(fe))
+        g = c.score(T, pot, gated)
+        kept = place(regions_by_video(g[0], T, c.thresholds_v2[budget], 1), T,
+                     (g[1] + np.where(inside, fs, ns)) / 2, (g[2] + np.where(inside, fe, ne)) / 2)
+        report(f"B={budget:>2} gate {share:.0%}, edge models gated too", kept, T)
     return 0
 
 

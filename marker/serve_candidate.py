@@ -57,6 +57,7 @@ class Candidate:
         self.start = stage_from(b["stages"]["start"], b["edge_inputs"])
         self.end = stage_from(b["stages"]["end"], b["edge_inputs"])
         self.fine_tuned = b.get("fine_tuned", {})
+        self.gate = b.get("gate")
         self.device = device
         self._bge = None
 
@@ -77,7 +78,8 @@ class Candidate:
                 out[r] = torch.sigmoid(self.sequence(X[torch.from_numpy(r)])).numpy()
         return out
 
-    def ft_stream(self, which: str, texts: list[str], video: np.ndarray) -> np.ndarray:
+    def ft_stream(self, which: str, texts: list[str], video: np.ndarray,
+                  mask: np.ndarray | None = None, neutral: float = 0.0) -> np.ndarray:
         """A fine-tuned model's score per line, from its checkpoint in the bundle.
 
         `which` is "bge" (inside a read), "edge_start" or "edge_resume". Each is the same
@@ -103,7 +105,11 @@ class Candidate:
                 return len(self.video)
 
         data = pairs(_R(video), texts)
-        out = np.zeros(len(texts), dtype=np.float32)
+        # The gate: score only the lines asked for and give the rest the model's neutral value. The
+        # windows still read their real neighbours, so a scored line sees the same text either way.
+        want = np.arange(len(data)) if mask is None else np.flatnonzero(mask)
+        out = np.full(len(texts), float(neutral), dtype=np.float32)
+        data = [data[i] for i in want]
         # Serving is CPU by design (the extension must not fight a game for the GPU), but the batch
         # checks grade tens of thousands of lines, which is an hour on the CPU and two minutes on the
         # card. `device` decides: "cpu" unless a caller asks for cuda.
@@ -112,18 +118,36 @@ class Candidate:
         model = model.to(dev)
         with torch.no_grad():
             for i in range(0, len(data), 64):
-                ids, mask, types = encode(tok, data[i:i + 64], dev)
-                out[i:i + ids.shape[0]] = torch.sigmoid(model(ids, mask, types).float()).cpu().numpy()
+                ids, att, types = encode(tok, data[i:i + 64], dev)
+                got = torch.sigmoid(model(ids, att, types).float()).cpu().numpy()
+                out[want[i:i + len(got)]] = got
         return out
 
-    def streams(self, rows, potX: np.ndarray, bge: np.ndarray) -> dict:
+    def cheap_streams(self, rows, potX: np.ndarray) -> dict:
+        """The five detectors that are not the fine-tuned one: Simon's first layer."""
         return {"marker": self._linear("marker", rows.X), "meaning": self._linear("meaning", rows.X),
                 "structure": self._linear("structure", rows.X), "potion": self._potion_stream(potX),
-                "sequence": self._sequence_stream(rows), "bge": bge}
+                "sequence": self._sequence_stream(rows)}
+
+    def gate_mask(self, cheap: dict, rows) -> np.ndarray:
+        """Which lines the expensive detector has to read: those near anything the cheap five saw.
+
+        The cut is fixed on the pooled data and stored in the bundle, so a video is not judged
+        against itself; a video with no ad in it simply sends fewer lines through.
+        """
+        from export_candidate import smooth
+        m = np.max(np.column_stack([cheap[k] for k in ("marker", "meaning", "structure", "potion", "sequence")]), axis=1)
+        return smooth(m, rows.video, int(self.gate["window"])) >= float(self.gate["cut"])
+
+    def streams(self, rows, potX: np.ndarray, bge: np.ndarray) -> dict:
+        return {**self.cheap_streams(rows, potX), "bge": bge}
 
     def score(self, rows, potX: np.ndarray, bge: np.ndarray):
         """Returns (context score, start score, end score), one per row."""
-        st = self.streams(rows, potX, bge)
+        return self.score_from(rows, self.streams(rows, potX, bge))
+
+    def score_from(self, rows, st: dict):
+        """The same, from streams already computed (so the cheap five are not run twice)."""
         F = np.column_stack([context_features(rows, st[k]) for k in self.order] + [rows.X[:, self.extra_cols]])
         E = context_features(rows, st["marker"])
         return self.context(F), self.start(E), self.end(E)
@@ -137,9 +161,11 @@ class CandidateTier(Candidate):
     BGE-small for the sixth detector (and, in v2, the two edge models). BGE dominates the cost.
     """
 
-    def __init__(self, path=DEFAULT, device: str | None = "cpu", budget: int = 10, v2: bool = True):
+    def __init__(self, path=DEFAULT, device: str | None = "cpu", budget: int = 10, v2: bool = True,
+                 gated: bool = True):
         super().__init__(path, device)
         self.budget, self.v2 = budget, v2
+        self.gated = gated and bool(self.gate)
         self._encoders = {}
 
     def _encoder(self, kind: str):
@@ -177,11 +203,16 @@ class CandidateTier(Candidate):
         from edge_heads import place
         from replay import regions_by_video
         rows, pot, texts = self.rows_for(caps)
-        bge = self.ft_stream("bge", texts, rows.video)
-        ctx, ps, pe = self.score(rows, pot, bge)
+        # Layer 1 sweeps, layer 2 reads only where it saw something. Measured on holdout 4: a fifth
+        # of the lines costs 0.1 of a point of ad time and does a fifth of the expensive work.
+        cheap = self.cheap_streams(rows, pot)
+        mask = self.gate_mask(cheap, rows) if self.gated else None
+        neutral = float(self.gate["neutral"]) if self.gated else 0.0
+        bge = self.ft_stream("bge", texts, rows.video, mask, neutral)
+        ctx, ps, pe = self.score_from(rows, {**cheap, "bge": bge})
         if self.v2:
-            ps = (ps + self.ft_stream("edge_start", texts, rows.video)) / 2
-            pe = (pe + self.ft_stream("edge_resume", texts, rows.video)) / 2
+            ps = (ps + self.ft_stream("edge_start", texts, rows.video, mask, neutral)) / 2
+            pe = (pe + self.ft_stream("edge_resume", texts, rows.video, mask, neutral)) / 2
             th = self.thresholds_v2[self.budget]
         else:
             th = self.thresholds[self.budget]
