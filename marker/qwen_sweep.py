@@ -81,10 +81,15 @@ def someone_else_needs_the_gpu() -> str | None:
                 continue
             if any(g in proc for g in ("valorant", "-win64-shipping", "cs2.exe", "fortnite", "overwatch", "eldenring")):
                 return f"a game is running ({proc})"
-        util = subprocess.run(["nvidia-smi", "--query-gpu=utilization.gpu", "--format=csv,noheader,nounits"],
-                              capture_output=True, text=True, creationflags=0x08000000).stdout.strip()
-        if util and int(util.splitlines()[0]) > 50:
-            return f"the GPU is {util.splitlines()[0]}% busy with something else"
+        # qwen's own last call can still show as load for a moment: wait, then require two busy readings
+        readings = []
+        for _ in range(2):
+            time.sleep(4)
+            util = subprocess.run(["nvidia-smi", "--query-gpu=utilization.gpu", "--format=csv,noheader,nounits"],
+                                  capture_output=True, text=True, creationflags=0x08000000).stdout.strip()
+            readings.append(int(util.splitlines()[0]) if util else 0)
+        if min(readings) > 50:
+            return f"the GPU is {min(readings)}% busy with something else" 
     except Exception:
         return None
     return None
