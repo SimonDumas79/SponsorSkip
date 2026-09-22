@@ -892,6 +892,41 @@ plain, unanchored version at 66.2% / 10.1 s, itself already behind our own heads
 videos over cap). The bottleneck reads like model judgment, not missing context: giving it more
 information did not help it decide, and in three tries it made the decision slightly worse.
 
+### Letting the local model reason: the biggest single lever on the walk (2026-09-22, `local_edges.py --think`)
+
+Simon asked directly whether anything obvious was being missed. Two things were. The walk reused
+`confirm_check.ask_bool`, which hard-codes `think: False` -- a setting chosen for a cheap yes/no
+(does this region contain a read?) and then inherited, unexamined, by a far more nuanced call (has
+the show resumed?). The extension's own local reader already runs qwen with `think: true`. And no run
+had ever been READ: every verdict came from aggregate ad time and show lost, never from a single
+answer the model actually gave.
+
+Reasoning on, nothing else changed, same settings (patience 1, group 3, reach 6), same 93 regions:
+
+| local walk | ad time | show lost | over 60 s | reads fully covered |
+|---|---|---|---|---|
+| reasoning off | 66.2% | 10.1 s | 1.6% | -- |
+| **reasoning on** | **68.2%** | **9.9 s** | 1.6% | 18% |
+| our averaged edge heads | 68.4% | 7.9 s | 0.0% | 38% |
+
+**+2 points of ad time and slightly less show lost, from one boolean.** It is the largest single
+improvement any change made to the local walk, and it closes almost the whole ad-time gap to our own
+edge heads (68.2% against 68.4%). **Still not adopted**: it loses 2 s more show per video and breaks
+the 60 s cap on one video where the heads break it on none, and it fully covers 18% of reads against
+the heads' 38% -- it is landing near the right answer more often without landing ON it.
+
+The trace (320 questions, each with the model's reasoning, in
+`data/local_edges_trace_holdout4_walk_think_B10.jsonl`) also corrected a wrong diagnosis. Hunting for
+dumb mistakes turned up none: the cases that looked wrong by keyword were sponsors deliberately
+bridging into the pitch through the video's own subject -- a moon-infrastructure documentary sponsor
+on a post-scarcity video, a Unity course sponsor reached via a speedrun's game engine. The model's
+calls there were defensible. The remaining overreach is small and sits in genuinely ambiguous seams,
+not in confusion.
+
+**The lesson worth keeping is about the method, not the model.** "The bottleneck is model judgment"
+was concluded from aggregate numbers alone, with a reasoning flag left off by inheritance and not one
+transcript read. Two points of ad time were sitting behind that assumption.
+
 ### The measured system was never the shipped system (2026-09-22, `export_candidate.py`, `serve_candidate.py`)
 
 Two days of gains lived only in evaluation code. `candidate.py` refits the six detectors on all
