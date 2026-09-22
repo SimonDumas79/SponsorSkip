@@ -822,6 +822,47 @@ region at all. The instruction was a real handicap; the model is the limit.
 Worth noting against the raw row: the regions themselves only cover 53.1% of ad time. Placement is
 carrying 18 points, which is why the edges were the right place to spend a language model.
 
+### The cascade, validated honestly on pooled CV (2026-09-22, `cascade_pooled.py`)
+
+Holdout 4's 71.2% was a development number: the idea was tuned against that same set afterward, so it
+could not be trusted as a grade. This checks the cascade's DIRECTION the proper way, on the pooled
+205 videos' out-of-fold scores, a coarse 3-point threshold sweep (claude-haiku, 811 distinct regions,
+23 failed calls, all falling back to our own edge heads as designed):
+
+| pooled CV | our averaged heads | claude edges (cascade) |
+|---|---|---|
+| B = 5 | 51.2% ad time, 5.0 s lost | **53.1%, 3.8 s** |
+| B = 10 | 59.9% ad time, 7.2 s lost | **62.7%, 5.4 s** |
+
+Better on both axes at both budgets, on the same reads (touched count is identical, so this is a
+placement gain, not a detection one). Smaller than holdout 4's number, as expected once the
+data-mining pressure is gone, but real and in the same direction. Thresholds chosen by the rule and
+fixed in `data/cascade_thresholds.json` (B=5 0.9962, B=10 0.9898) BEFORE any fresh set is touched, so
+holdout 5 (pre-registration 3) can now be graded honestly whenever the crawl produces it.
+
+### The walk, tuned on holdout 4: still behind our own heads at every setting tried (2026-09-22, `local_edges.py --walk`)
+
+The first walk setting (patience 2, group 3, reach 30 lines) hit 77.3% of ad time -- more than
+Claude's cascade -- but lost 33.4 s of show per video and broke the 60 s cap on 22% of videos: it
+does not know how to stop. A sweep of patience/group/reach on the same 93 development regions:
+
+| patience, group, reach | ad time | show lost | over 60 s |
+|---|---|---|---|
+| 2, 3, 30 (first try) | 77.3% | 33.4 s | 21.9% |
+| 2, 3, 12 | 72.7% | 18.5 s | 6.2% |
+| 1, 3, 12 | 69.2% | 14.0 s | 3.1% |
+| 1, 2, 8 | 68.5% | 11.1 s | 1.6% |
+| **1, 3, 6** | **66.2%** | **10.1 s** | **1.6%** |
+| our averaged edge heads, for comparison | 68.4% | 7.9 s | 0.0% |
+
+Every setting still loses more show than our own edge heads for the same or less ad time; the
+tightest (reach 6) is the closest but still costs 2.2 s more per video with a nonzero over-cap rate.
+The walk fixed the counting failure (removing arithmetic let the model take MORE ad time than any
+free system measured, at the loose setting) but it still cannot judge "the show has resumed"
+reliably, so shrinking its leash trades the gain back away rather than keeping it. **Not adopted for
+the local tier.** Worth a second look if a stop-criterion that isn't just "N misses in a row" is tried
+(e.g. asking the model to compare against the region's own tone instead of a bare yes/no).
+
 ### The measured system was never the shipped system (2026-09-22, `export_candidate.py`, `serve_candidate.py`)
 
 Two days of gains lived only in evaluation code. `candidate.py` refits the six detectors on all
