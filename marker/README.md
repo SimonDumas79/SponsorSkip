@@ -458,6 +458,24 @@ and mixed. The recipe tweaks stay in MiniLM's band. **Adopted: fine-tuned BGE-sm
 detector.** Serving cost: 33M parameters, 12 layers, about twice MiniLM-L6 per window (ONNX int8 and
 embedding each line once are the known ways back down). BGE-base (110M) is being tried next.
 
+### Fine-tuned BGE start/resume models: more precise starts (2026-09-22, `edge_ft_eval.py`)
+
+`finetune_minilm.py --target start|resume --model BAAI/bge-small-en-v1.5` trains BGE on the same soft
+start/resume labels the MLP edge heads use; its scores replace or join the heads (same windows).
+Start error is measured on the reads where Claude and SponsorBlock agree:
+
+| system, edges | B = 5 | B = 10 | start error at B = 10 |
+|---|---|---|---|
+| shipped tier, MLP heads | 38.4% | 44.6% | median 4.3 s, 29% within 2 s |
+| shipped tier, fine-tuned heads | 41.1% | 46.4% | median 2.6 s, 40% within 2 s |
+| stack + fine-tuned, MLP heads | 48.8% | 53.1% | median 3.6 s, 37% within 2 s |
+| stack + fine-tuned, fine-tuned heads | 47.1% | 48.0% | median 2.4 s, 45% within 2 s |
+| stack + fine-tuned, average of both | 48.5% | 56.4% | median 2.4 s, 44% within 2 s |
+
+The first thing to move the ~4 s start floor: fine-tuning is what the start model needed, not
+cleaner labels. Ad time on the stack moves inconsistently (one seed); the averaged heads are the
+candidate to confirm with more seeds. Not in the pre-registered candidate.
+
 ## Notes worth keeping
 
 - **SponsorBlock's CSV dumps are switched off** (bandwidth); the hash-prefix API
