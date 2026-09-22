@@ -555,7 +555,9 @@ video). The two see different things (short line windows vs long extracted chunk
 model learns when to trust each. At the community model's own cost (<= 17.0 s lost per video) the
 combination ties it (73.0-74.1% vs 73.4%); below that cost the community model cannot go at all,
 and the combination gives 64.6-67.0% at 7-8 s. Cost: the community model is a 77M T5 plus a BERT classifier, about
-11 s per video on the GPU, so it belongs in a GPU tier, not the CPU free tier.
+11 s per video on the GPU. **On the CPU (8 threads) it measured 7.7 and 8.8 s for two 8-minute
+videos**, about 1 s per minute of video: heavier than the free tier's ~10 s, but a workable slower
+free option for typical 10-20 minute videos; a 90-minute podcast would take ~1.5 min.
 
 ## Notes worth keeping
 
