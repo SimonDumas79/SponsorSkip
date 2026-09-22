@@ -636,6 +636,37 @@ against the original's 73.4% at 17.0 s. As the stack's seventh detector: 45.6-47
 fold) are too few: it forgets what years of SponsorBlock data taught it and over-flags. Not adopted;
 the original community model stays as the detector.
 
+### Walking outwards from inside the read, sentence by sentence: not adopted (2026-09-22, `walk_edges.py`)
+
+Simon's rule, and the obvious one: find the ad, then step backwards a line at a time while each line
+still looks like the ad, stop when it clearly does not, then the same forwards. `widen_gate.py` had
+already tried this and always chose not to walk, but on the CONTEXT model's score, which is averaged
+over 31 lines and so stays high well past the true edge. This walks on the **fine-tuned per-line
+score** instead, the sharp one, and stops only after PATIENCE lines in a row below a line threshold,
+so a single quiet line inside the read does not end the walk. Line threshold and patience were chosen
+by the pooled rule alongside the detection threshold, exactly as the shipped placement's are.
+
+Ad time skipped, three BGE stack seeds, pooled 205 videos:
+
+| placement | seed 0 | seed 1 | seed 2 |
+|---|---|---|---|
+| averaged heads (v2), B = 5 | 49.6% | 50.3% | 51.0% |
+| walk outwards, B = 5 | 49.7% | 49.3% | 48.0% |
+| averaged heads (v2), B = 10 | 62.0% | 62.4% | 61.8% |
+| walk outwards, B = 10 | 60.6% | 56.1% | 60.9% |
+
+It loses five of six comparisons: about 1 point at B = 5 and about 3 at B = 10. Edge error on the
+agreed reads is no better either, start 2.7 s against 2.2-2.4 s for the averaged heads, end 2.6 s
+against about 1.8 s. **Not adopted.**
+
+Worth saying why, because the idea is sound and the model is not: the rule always chose PATIENCE 1,
+meaning it stopped at the very first line that did not look like the ad. Every more patient setting
+scored worse. A walk that stops at the first quiet line is just a threshold crossing found the slow
+way, and the heads already find it while reading the whole neighbourhood at once. The sequential
+version can only use what it has passed; the head sees both sides of the candidate edge at once, and
+that is the information that places an edge well. This is the second test of the walk idea and the
+second rejection, on a sharper score than the first.
+
 ### The measured system was never the shipped system (2026-09-22, `export_candidate.py`, `serve_candidate.py`)
 
 Two days of gains lived only in evaluation code. `candidate.py` refits the six detectors on all
