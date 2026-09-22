@@ -86,14 +86,27 @@ def pairs(rows, texts: list[str]) -> list[tuple[str, str]]:
         r = np.flatnonzero(rows.video == vid)
         t = [texts[k] for k in r]
         for j, k in enumerate(r):
-            out[k] = (t[j], " ".join(t[max(0, j - WINDOW):j + WINDOW + 1]))
+            w = OPT["window"]
+            out[k] = (t[j], " ".join(t[max(0, j - w):j + w + 1])) if w else (t[j], None)
     return out
+
+
+OPT = {"model": MODEL_NAME, "epochs": EPOCHS, "window": WINDOW, "llrd": 0.0, "reinit": 0, "rdrop": 0.0}
+# The experiment knobs (set from the command line in main; the defaults are the recipe of record):
+#   model   the encoder to fine-tune          epochs  passes over the training folds
+#   window  lines either side (0 = the line alone, so serving can embed each line once)
+#   llrd    layer-wise LR decay: each layer below the top gets this factor of the one above (0 = off)
+#   reinit  re-initialise the top N encoder layers before training
+#   rdrop   R-Drop weight: two dropout passes, symmetric KL between them added to the loss (0 = off)
 
 
 class Scorer(nn.Module):
     def __init__(self):
         super().__init__()
-        self.encoder = AutoModel.from_pretrained(MODEL_NAME)
+        self.encoder = AutoModel.from_pretrained(OPT["model"])
+        if OPT["reinit"]:
+            for layer in self.encoder.encoder.layer[-OPT["reinit"]:]:
+                layer.apply(self.encoder._init_weights)
         self.head = nn.Linear(self.encoder.config.hidden_size, 1)
         nn.init.zeros_(self.head.weight)
         nn.init.zeros_(self.head.bias)
@@ -105,8 +118,9 @@ class Scorer(nn.Module):
 
 
 def encode(tok, batch: list[tuple[str, str]], device):
-    enc = tok([a for a, _ in batch], [b for _, b in batch], truncation="longest_first", max_length=MAX_TOKENS,
-              padding=True, return_tensors="pt")
+    seconds = [b for _, b in batch]
+    enc = tok([a for a, _ in batch], None if seconds[0] is None else seconds, truncation="longest_first",
+              max_length=MAX_TOKENS, padding=True, return_tensors="pt")
     return (enc["input_ids"].to(device), enc["attention_mask"].to(device),
             enc.get("token_type_ids", torch.zeros_like(enc["input_ids"])).to(device))
 
@@ -134,13 +148,37 @@ def wait_for_games(model, opt, device) -> None:
     print("  resumed", flush=True)
 
 
+def param_groups(model) -> list[dict]:
+    """The head at LR_HEAD; the encoder at LR_ENCODER, or with layer-wise decay from the top layer down."""
+    if not OPT["llrd"]:
+        return [{"params": model.encoder.parameters(), "lr": LR_ENCODER},
+                {"params": model.head.parameters(), "lr": LR_HEAD}]
+    layers = list(model.encoder.encoder.layer)
+    groups = [{"params": model.head.parameters(), "lr": LR_HEAD}]
+    used = set()
+    for depth, layer in enumerate(reversed(layers)):
+        ps = list(layer.parameters())
+        used |= {id(p) for p in ps}
+        groups.append({"params": ps, "lr": LR_ENCODER * OPT["llrd"] ** depth})
+    rest = [p for p in model.encoder.parameters() if id(p) not in used]   # embeddings (and any pooler)
+    groups.append({"params": rest, "lr": LR_ENCODER * OPT["llrd"] ** len(layers)})
+    return groups
+
+
+def bernoulli_kl(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+    """Symmetric KL between the two passes' Bernoulli outputs (R-Drop for a binary head)."""
+    pa, pb = torch.sigmoid(a).clamp(1e-6, 1 - 1e-6), torch.sigmoid(b).clamp(1e-6, 1 - 1e-6)
+    kl_ab = pa * (pa / pb).log() + (1 - pa) * ((1 - pa) / (1 - pb)).log()
+    kl_ba = pb * (pb / pa).log() + (1 - pb) * ((1 - pb) / (1 - pa)).log()
+    return 0.5 * (kl_ab + kl_ba).mean()
+
+
 def train_fold(train_idx, test_idx, data, y, tok, device, seed: int) -> np.ndarray:
     torch.manual_seed(seed)
     rng = np.random.default_rng(seed)
     model = Scorer().to(device)
-    opt = torch.optim.AdamW([{"params": model.encoder.parameters(), "lr": LR_ENCODER},
-                             {"params": model.head.parameters(), "lr": LR_HEAD}], weight_decay=0.01)
-    steps = EPOCHS * math.ceil(len(train_idx) / BATCH)
+    opt = torch.optim.AdamW(param_groups(model), weight_decay=0.01)
+    steps = OPT["epochs"] * math.ceil(len(train_idx) / BATCH)
     warm = int(WARMUP * steps)
     sched = torch.optim.lr_scheduler.LambdaLR(
         opt, lambda s: (s + 1) / warm if s < warm else max(0.0, (steps - s) / max(1, steps - warm)))
@@ -148,16 +186,22 @@ def train_fold(train_idx, test_idx, data, y, tok, device, seed: int) -> np.ndarr
     loss_fn = nn.BCEWithLogitsLoss(pos_weight=torch.tensor((len(train_idx) - pos) / pos, device=device))
     step, started = 0, time.time()
     model.train()
-    for epoch in range(EPOCHS):
+    for epoch in range(OPT["epochs"]):
         order = rng.permutation(train_idx)
         for i in range(0, len(order), BATCH):
             if step % 200 == 0:
                 wait_for_games(model, opt, device)
             b = order[i:i + BATCH]
             ids, mask, types = encode(tok, [data[k] for k in b], device)
+            target = torch.from_numpy(y[b]).float().to(device)
             with torch.autocast("cuda", dtype=torch.bfloat16):
-                logits = model(ids, mask, types)
-            loss = loss_fn(logits.float(), torch.from_numpy(y[b]).float().to(device))
+                logits = model(ids, mask, types).float()
+                if OPT["rdrop"]:
+                    logits2 = model(ids, mask, types).float()
+            if OPT["rdrop"]:
+                loss = 0.5 * (loss_fn(logits, target) + loss_fn(logits2, target)) + OPT["rdrop"] * bernoulli_kl(logits, logits2)
+            else:
+                loss = loss_fn(logits, target)
             opt.zero_grad(set_to_none=True)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
@@ -184,7 +228,16 @@ def train_fold(train_idx, test_idx, data, y, tok, device, seed: int) -> np.ndarr
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--model", default=MODEL_NAME)
+    ap.add_argument("--epochs", type=int, default=EPOCHS)
+    ap.add_argument("--window", type=int, default=WINDOW)
+    ap.add_argument("--llrd", type=float, default=0.0)
+    ap.add_argument("--reinit", type=int, default=0)
+    ap.add_argument("--rdrop", type=float, default=0.0)
+    ap.add_argument("--tag", default="", help="names the output: finetune_oof_<tag>_seed<seed>.npy (empty = the recipe of record)")
     args = ap.parse_args()
+    OPT.update(model=args.model, epochs=args.epochs, window=args.window, llrd=args.llrd, reinit=args.reinit,
+               rdrop=args.rdrop)
     if sys.platform == "win32":
         ctypes.windll.kernel32.SetPriorityClass(ctypes.windll.kernel32.GetCurrentProcess(), 0x4000)
     torch.set_num_threads(4)
@@ -192,14 +245,15 @@ def main() -> int:
     rows, _, _ = pooled()
     data = pairs(rows, line_texts(rows))
     y = rows.y.astype(np.float32)
-    tok = AutoTokenizer.from_pretrained(MODEL_NAME)
+    tok = AutoTokenizer.from_pretrained(OPT["model"])
     print(f"pooled: {rows.videos} videos, {len(rows):,} lines, {int(y.sum()):,} inside a read; "
-          f"window +-{WINDOW} lines, {MAX_TOKENS} tokens, {EPOCHS} epochs, seed {args.seed}", flush=True)
+          f"{OPT}, seed {args.seed}", flush=True)
 
     channels = np.array(sorted(set(rows.channel)))
     np.random.default_rng(0).shuffle(channels)   # the same folds as experiments.cross_validate(seed=0)
-    out_path = DATA / f"finetune_oof_seed{args.seed}.npy"
-    partial = DATA / f"finetune_oof_seed{args.seed}.partial.npy"
+    stem = f"finetune_oof_{args.tag}_seed{args.seed}" if args.tag else f"finetune_oof_seed{args.seed}"
+    out_path = DATA / f"{stem}.npy"
+    partial = DATA / f"{stem}.partial.npy"
     oof = np.load(partial) if partial.exists() else np.full(len(rows), np.nan, dtype=np.float32)
     started = time.time()
     for f, fold in enumerate(np.array_split(channels, 5), 1):
