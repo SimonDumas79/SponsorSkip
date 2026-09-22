@@ -113,7 +113,7 @@ def run_edges(which: str, model: str, workers: int, budget: int, dev: str, local
 
     th = c.thresholds_v2[budget]
     found = regions_by_video(ctx, T, th, 1)
-    jobs = [(vid, lo, hi) for vid, spans in found.items() for lo, hi in spans]
+    jobs = [(vid, int(lo), int(hi)) for vid, spans in found.items() for lo, hi in spans]
     print(f"{which}: {T.videos} videos, {T.reads} reads; the cheap layers found {len(jobs)} regions "
           f"at B={budget} (threshold {th:.4f}).", flush=True)
 
@@ -126,7 +126,10 @@ def run_edges(which: str, model: str, workers: int, budget: int, dev: str, local
         key = f"{vid}:{lo}-{hi}"
         if key in answers:
             return
-        wlo, whi, text = edge_window(lines_by_video[vid], lo, hi)
+        # int() is not decoration: lo and hi come out of numpy, so wlo is an int64, and json.dumps
+        # refuses it. On 2026-09-22 that crash threw away 93 answered Claude calls at the cache write.
+        wlo, whi, text = edge_window(lines_by_video[vid], int(lo), int(hi))
+        wlo = int(wlo)
         if local:
             from qwen_edges import ASK as LOCAL_ASK, ask_edges
             a = ask_edges(f"{LOCAL_ASK}\n\n{text}")
