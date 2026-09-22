@@ -272,7 +272,12 @@ const PYTHON = process.env.SPONSORSKIP_PYTHON || "python";
  * {segments} on stdout. It loads PyTorch and MiniLM on every call (a few
  * seconds), which is fine beside a Claude read of 30-90 s.
  */
-export function readMarker(id, video, root, { tier = "free", timeoutMs = tier === "qwen" ? 600_000 : 180_000 } = {}) {
+// The candidate tier runs three encoders on the CPU. With the cheap-five gate it reads about a third
+// of the lines, so a median video is ~20 s, but the longest transcript in our corpus is 3,119 lines
+// and would crowd the old 180 s.
+const MARKER_TIMEOUTS = { qwen: 600_000, candidate: 300_000, free: 180_000 };
+
+export function readMarker(id, video, root, { tier = "free", timeoutMs = MARKER_TIMEOUTS[tier] ?? 180_000 } = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(PYTHON, [path.join(root, "marker", "predict.py"), "serve", "--tier", tier], {
       cwd: root,
