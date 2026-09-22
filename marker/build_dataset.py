@@ -99,6 +99,11 @@ def main() -> int:
     )
     ap.add_argument("--seed", type=int, default=20260920)
     ap.add_argument(
+        "--keep-selfpromo-only", action="store_true",
+        help="keep videos whose only SponsorBlock marks are self-promo (channel_videos.py collects "
+             "those; the tail crawls never did). Off by default so the graded builds do not change.",
+    )
+    ap.add_argument(
         "--not-in",
         type=Path,
         nargs="+",
@@ -126,24 +131,26 @@ def main() -> int:
     videos = skipped = reserved = 0
     for path in sorted(args.captions.glob("*.json")):
         caps = json.loads(path.read_text(encoding="utf-8"))
-        segments = segments_by_video.get(caps["videoID"])
-        if not segments:
+        segments = segments_by_video.get(caps["videoID"]) or []
+        # Self-promo gets the same trust rule as pick_videos.py (nothing downvoted) and a wider
+        # length window, because a host pitching their own course can run past three minutes.
+        promo = [(p["start"], p["end"], "selfpromo") for p in selfpromo_by_video.get(caps["videoID"], [])
+                 if p["votes"] >= 0 and 5 <= p["end"] - p["start"] <= 300]
+        if not segments and not (args.keep_selfpromo_only and promo):
             skipped += 1
             continue
         if (caps["channel_id"] or caps["channel"] or "unknown") in reserved_channels:
             reserved += 1
             continue
-        spans = [(s, e, "sponsor") for s, e in segments]
-        # Self-promo gets the same trust rule as pick_videos.py (nothing downvoted) and a wider
-        # length window, because a host pitching their own course can run past three minutes.
-        spans += [(p["start"], p["end"], "selfpromo") for p in selfpromo_by_video.get(caps["videoID"], [])
-                  if p["votes"] >= 0 and 5 <= p["end"] - p["start"] <= 300]
+        spans = [(s, e, "sponsor") for s, e in segments] + promo
         rows = label_video(caps, spans)
         # A video where the SPONSOR labels found nothing is a labelling failure (caption
         # times not matching the segment times), not a video without a sponsor. Judged on
         # the sponsor segments alone so that adding self-promo never changes which videos
-        # are kept, and so the channel split stays exactly what it was.
-        if not any(r["category"] == "sponsor" for r in rows):
+        # are kept, and so the channel split stays exactly what it was. With
+        # --keep-selfpromo-only the same test is applied to whichever marks the video has.
+        required = {"sponsor", "selfpromo"} if (args.keep_selfpromo_only and not segments) else {"sponsor"}
+        if not any(r["category"] in required for r in rows):
             skipped += 1
             continue
         rows_by_channel[rows[0]["channel_id"]].extend(rows)

@@ -38,6 +38,13 @@ with `build_dataset.py --all-to holdout` and `features.py --out data/features_ta
 Build it FIRST: the training build's `--not-in` reads it to keep every holdout
 channel out of training.
 
+Named-channel data (`channel_videos.py` -> `candidates_channels.json`, captions in
+`captions_channels/`) is built with `--all-to channels --keep-selfpromo-only
+--not-in` every other examples file. The flag matters only there: the channel
+scan keeps videos whose only SponsorBlock marks are self-promo, and without it
+`build_dataset.py` drops them (it judges "labels found nothing" on sponsor marks
+alone so the graded builds never change; verified byte-identical 2026-09-21).
+
 Every step is resumable and skips work already done, so a stopped fetch can just
 be run again. Nothing in `data/` is committed.
 
