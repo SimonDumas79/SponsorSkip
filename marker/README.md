@@ -223,6 +223,55 @@ lever pays this tax. The headroom is in a checker that removes false alarms and
 places starts, which is Claude's job (15 of 15 reads, 1.3 s median start error)
 and partly qwen's (the qwen tier's 63.4% on both holdouts sits inside this ceiling).
 
+### Every detector compared, then combined: stacking works (2026-09-21, `detector_bakeoff.py`, `stack_check.py`)
+
+Simon's question: compare the marker with the other detectors we built, and combine
+them all. Seven free detectors, each out of fold on the pooled 205 videos with the same
+channel folds, each given its own context model and the edge heads, pooled rule:
+
+| Detector, B = 10 | ad time | show lost / video |
+|---|---|---|
+| cue patterns + context model | 43.5% | 9.5 s |
+| description signal + context | 23.5% | 5.5 s |
+| structure only (seam, cues, position) + context | 41.6% | 6.7 s |
+| meaning only (MiniLM) + context | 45.4% | 7.4 s |
+| potion-base-8M marker + context | 44.9% | 6.7 s |
+| **shipped marker + context** | 41.7% | 6.0 s |
+| sequence model + context | 39.6% | 5.4 s |
+
+Alone they are all within a few points. They are NOT alike: meaning and the marker
+correlate 0.93, but cues, description and structure 0.16-0.55 with the rest, and the cue
+patterns touch 37 reads the marker's free tier misses (potion 27, structure 28).
+
+Combinations, B = 10: skipping every detector's regions (union) gets 59.2% but loses
+17.4 s per video with 7.3% of videos over 60 s, so it fails the rule. Averaging the
+logits gets 42.0% at 3.8 s. Letting a second detector veto the free tier's regions
+("agreement") gets 43-48%, inside the noise. **One context model reading all five
+learned detectors' scores in its window** gets about 50%.
+
+`stack_check.py` then tested it three ways:
+
+| | shipped, 3 seeds | stack, 3 seeds |
+|---|---|---|
+| B = 5 | 37.0 / 38.4 / 40.5% | 42.5 / 47.1 / 48.3% |
+| B = 10 | 39.0 / 41.3 / 44.6% | 49.5 / 49.9 / 52.4% |
+
+Lost show is the same, 4.7-6.7 s per video. The worst stacked seed beats the best
+shipped seed at both budgets. Read by read at B = 10: the stack skips more of 41 reads,
+less of 19 (sign test p = 0.006); it touches 23 reads the shipped tier misses entirely,
+and misses 10 that it touches.
+
+Ablation, one seed each, so read differences under ~3 points as noise: the raw cue and
+description columns add nothing (all five detectors without them: 50.6% / 44.0%); no
+single addition does it (marker + potion 45.6%, marker + sequence 46.5%, marker + meaning
++ structure 45.8%); dropping potion or the sequence model costs about 3 points each. The
+gain comes from combining several different views, not from one of them.
+
+**Status: a candidate, not shipped.** It was chosen on pooled CV after trying ~15
+combinations, so it needs a fresh test before it replaces anything. At serving time it
+needs potion's embeddings (a ~8 MB lookup table) and three more small models on the
+same features; all CPU-cheap.
+
 ## Notes worth keeping
 
 - **SponsorBlock's CSV dumps are switched off** (bandwidth); the hash-prefix API
