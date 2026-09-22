@@ -511,6 +511,20 @@ are popular channels with years of SponsorBlock marks, so it has likely learned 
 (same sponsors, same scripts); our models never saw them. `sb_dates.py` measures which videos'
 labels predate its training; holdout 4 (low-review tail videos) is the fair comparison.
 
+**Leakage measured** (`sb_dates.py`: SponsorBlock's searchSegments gives each segment's submission
+time): 45 of the 205 pooled videos, and none of the 169 channel videos, had a sponsor/self-promo
+segment before 2022-04. On the 160 pooled videos neither system has seen labels for:
+
+| system | ad time | show lost / video | videos over 60 s |
+|---|---|---|---|
+| community SponsorBlock model | 73.4% | 17.0 s | 6.9% |
+| ours, stack + BGE, B = 5 / B = 10 | 51.8% / 58.4% | 5.1 / 9.4 s | 0.0 / 1.2% |
+| ours, v2 averaged heads, B = 5 / B = 10 | 49.1% / 61.5% | 5.4 / 9.5 s | 0.0 / 1.2% |
+
+(On the 45 older videos it does 78.3% at 24.5 s.) Leakage does not explain its recall: it finds much
+more ad, at nearly twice our lost show, and breaks the 2% cap. It is a different trade-off, and
+a different view (long chunks, text extraction): `stack_sbml.py` tests it as a seventh detector.
+
 ## Notes worth keeping
 
 - **SponsorBlock's CSV dumps are switched off** (bandwidth); the hash-prefix API
