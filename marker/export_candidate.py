@@ -184,8 +184,9 @@ def from_checkpoints(which: str) -> int:
                 text[(r["videoID"], r["i"])] = r["text"]
     d = np.load(DATA / fresh)
     texts = [text[(str(v), int(i))] for v, i in zip(d["video"], d["line"])]
-    c = Candidate(OUT)
-    print(f"{fresh}: {T.videos} videos, {T.reads} reads -- fine-tuned streams from the checkpoints", flush=True)
+    dev = "cuda" if torch.cuda.is_available() else "cpu"
+    c = Candidate(OUT, device=dev)
+    print(f"{fresh}: {T.videos} videos, {T.reads} reads -- fine-tuned streams from the checkpoints on {dev}", flush=True)
     bge = c.ft_stream("bge", texts, T.video)
     fs = c.ft_stream("edge_start", texts, T.video)
     fe = c.ft_stream("edge_resume", texts, T.video)

@@ -104,10 +104,16 @@ class Candidate:
 
         data = pairs(_R(video), texts)
         out = np.zeros(len(texts), dtype=np.float32)
+        # Serving is CPU by design (the extension must not fight a game for the GPU), but the batch
+        # checks grade tens of thousands of lines, which is an hour on the CPU and two minutes on the
+        # card. `device` decides: "cpu" unless a caller asks for cuda.
+        dev = self.device if self.device in ("cpu", None) else self.device
+        dev = "cpu" if dev is None else dev
+        model = model.to(dev)
         with torch.no_grad():
             for i in range(0, len(data), 64):
-                ids, mask, types = encode(tok, data[i:i + 64], "cpu")
-                out[i:i + ids.shape[0]] = torch.sigmoid(model(ids, mask, types).float()).numpy()
+                ids, mask, types = encode(tok, data[i:i + 64], dev)
+                out[i:i + ids.shape[0]] = torch.sigmoid(model(ids, mask, types).float()).cpu().numpy()
         return out
 
     def streams(self, rows, potX: np.ndarray, bge: np.ndarray) -> dict:
