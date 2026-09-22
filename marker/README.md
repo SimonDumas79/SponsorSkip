@@ -307,6 +307,28 @@ sit between two subjects (Simon's point), so the show does not "resume" to the s
 region's similarity to its CLOSER side separates them 75% of the time (reads 0.65, false alarms
 0.74): a read is unlike both neighbours, product talk resembles at least one. Not built yet.
 
+### Watch-page hints: chapters yes, the paid-promotion flag no (2026-09-22, `fetch_watch_meta.py`, `watch_meta_eval.py`)
+
+One GET of each watch page reads YouTube's "Includes paid promotion" flag (paidContentOverlay in the
+player response; yt-dlp does not expose it) and the creator's chapters. Pooled 205 videos, all of
+which have a read:
+
+- **The flag is on only 44% of them**, so creators mostly do not tick it. As a gate (a looser
+  threshold on flagged videos, both thresholds chosen by the rule) it does nothing: 39.0% vs 38.4%
+  at B = 5, 43.4% vs 44.6% at B = 10. Not adopted. Its absence says little; it may still matter
+  on sponsor-free videos (to be measured on the negatives crawl).
+- **Chapters are on 35%, and 20 of them are titled for a read** ("Sponsor", "Ad"...). All 20 sit
+  on a labelled read (20/20), covering 20 of 280 reads, with edges a median 1.9 s (start) and
+  1.3 s (end) from SponsorBlock's. Used as edges (and as a skip even with no region): 40.7% vs
+  38.4% at B = 5, 46.5% vs 44.6% at B = 10. **Adopted**: free, creator-stated, no false alarm seen.
+  yt-dlp returns chapters in the same call that fetches captions.
+
+### Joint start/end pairs: no gain (2026-09-22, `joint_edges.py`)
+
+Scoring each (start, end) pair together, with the region's interior evidence weighted by ALPHA
+and TAU chosen by the rule, picked ALPHA = 0 every time: identical to the separate start/end
+models on the shipped tier (41.7%) and within 0.1 point on the stack (49.8 vs 49.7%).
+
 ## Notes worth keeping
 
 - **SponsorBlock's CSV dumps are switched off** (bandwidth); the hash-prefix API
