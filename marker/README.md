@@ -418,6 +418,11 @@ Both pass the research round's target (>= 90% untouched, <= 5% over 10 s). The o
 unmarked sponsored one (Claude check pending). False alarms concentrate in product-talk videos,
 which is where hard negatives should come from. Updated as the crawl reaches 190.
 
+Claude check (Sonnet whole-video sweep, the data room's random + flagged design): of 26 randomly
+chosen tier-B videos Claude found a sponsor read in 1 (a 15 s read): about 4% label noise, so the
+panel is clean enough to trust. Of the 4 videos the graded tier flagged, Claude found a read in
+none: they are genuine false alarms (the VideoProc tutorial among them).
+
 ## Notes worth keeping
 
 - **SponsorBlock's CSV dumps are switched off** (bandwidth); the hash-prefix API
