@@ -200,8 +200,17 @@ def main() -> int:
                     pre_lo = max(0, pre_hi - args.anchor_pre)
                     sample = " ".join(l["text"] for l in lines[pre_lo:pre_hi])
                     if sample:
-                        extra = (f'\nHere is what the show was actually talking about right before the '
-                                 f'ad started: "{sample}"\n')
+                        # Simon's second point, 2026-09-22: a host often places the ad exactly at a
+                        # topic break ("before we get into X, this is sponsored by Y" ... "now, X").
+                        # If the marked lines require matching THIS sample's subject, a real return
+                        # to a NEW topic would wrongly look like it is still the ad. The sample is
+                        # therefore framed as tone/register only -- how the host talks when hosting --
+                        # and the instruction says outright that the topic may have moved on.
+                        extra = (
+                            f'\nHere is a sample of the host\'s own voice from just before the ad, so '
+                            f'you know what genuine hosting sounds like in this video (NOT necessarily '
+                            f'the same subject the marked lines are about -- the show may move on to a '
+                            f'new topic once the ad ends, and that is still the show): "{sample}"\n')
                 elif args.anchor_lines:
                     opening = " ".join(l["text"] for l in lines[:args.anchor_lines])
                     extra = f'\nHere is a sample of the show, from its opening: "{opening}"\n'
