@@ -582,7 +582,20 @@ Claude finds more ad at about half the lost show. Both break the 2% over-60 s ca
 the same day: `claude_label.py` read a failed call as "no read" until 13:05, so any failures in this
 Haiku run count as misses: its 79.1% is if anything an underestimate. A first "Sonnet" run of the same
 160 videos lost about half its answers that way, most likely to the subscription's usage limit, and is
-discarded, not reported.) As an extra
+discarded, not reported.)
+
+**Sonnet, measured properly** (40 of the same videos, 62 reads, the failure-aware labeller, 0 failed
+windows):
+
+| the same 40 videos | ad time | show lost / video | over 60 s | found a read in |
+|---|---|---|---|---|
+| Claude Haiku (the shipped default) | 79.0% | 13.6 s | 7.5% | 39 / 40 |
+| **Claude Sonnet** | **83.4%** | **9.4 s** | **5.0%** | 40 / 40 |
+
+Sonnet takes 4 points more ad time while losing 4 s less show per video, and breaks the 60 s cap
+less often: the best reader measured, and better than the community model on both axes. Its cost is
+subscription usage, not latency (about 7 s per window either way). Switching the extension's default
+(`server/agents.mjs`, `SPONSORSKIP_MODEL`) is Simon's call. As an extra
 detector in the stack (context model trained and graded on the 160, seed 0): + Claude 59.7% (B = 5) /
 67.8% (B = 10); + community model 60.7 / 64.6%; + both 51.8 / 65.5% (one seed, 160 videos: likely
 too many inputs for the data). The rule-bound stacks trade some of Claude's recall for staying
