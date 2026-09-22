@@ -38,3 +38,29 @@ English, so the same numbers).
 - **Gross-overfitting tripwire:** candidate ad time at B = 10 below 45% (pooled CV was 57.0-58.7%
   over three BGE seeds) means something does not transfer, and nothing ships until it is understood.
 - Whatever the result, it is reported as measured, with the 3-channel caveat attached.
+
+## Result (graded once, 2026-09-22 ~06:55; `data/prereg_channels.log`)
+
+169 videos, 191 reads, 3 channels, none in the pooled training data.
+
+| system | B | ad time | show lost / video | videos over 60 s | false regions |
+|---|---|---|---|---|---|
+| **candidate** | 5 | **54.2%** | 5.2 s | 0.6% | 5 |
+| **candidate** | 10 | **64.0%** | 6.3 s | 1.8% | 6 |
+| candidate + creator chapters | 5 | 87.8% | 6.6 s | 1.8% | 5 |
+| candidate + creator chapters | 10 | 91.5% | 7.6 s | 3.0% (breaks the 2% cap) | 6 |
+| graded free tier (`free_tier.pt`, shipped) | | 43.7% | 8.0 s | | |
+| pooled free tier (`free_tier_pooled.pt`) | | 42.6% | 5.4 s | | |
+| cue patterns | | 37.0% | 22.8 s | | |
+
+Reads fully / partly / not skipped by the candidate: 42 / 34 / 24% (B = 5), 46 / 37 / 17% (B = 10).
+
+**Verdict against the rule written above: PASS.** The candidate beats the graded free tier at both
+budgets (+10.5 and +20.3 points), show lost is within 3 s of its pooled-CV figure (CV ~5.0 s at B = 5,
+~8.5 s at B = 10), and no more than 2% of videos lose over 60 s. The tripwire (under 45% at B = 10)
+did not fire.
+
+Caveats, as registered: 3 channels, so this rules out gross overfitting and does not show the size
+generalises. The chapter result is channel-specific: all three creators title their sponsor
+segments, so chapters nearly solve these channels; most channels do not (20 of 280 pooled reads had
+such a chapter). The next test is the many-channel SponsorBlock tail crawl.
