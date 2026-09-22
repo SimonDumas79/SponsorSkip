@@ -694,6 +694,40 @@ version can only use what it has passed; the head sees both sides of the candida
 that is the information that places an edge well. This is the second test of the walk idea and the
 second rejection, on a sharper score than the first.
 
+### Layer the models: the cheap five gate the expensive three (2026-09-22, `cascade.py --gate`) — ADOPTED
+
+Simon, 2026-09-22: "It should be layered, cheap quick model does the initial early sweep, then a
+stronger cheap model to get the other markers down, then if selected, either local or Claude will
+begin parsing out the sponsored sections."
+
+The candidate was not layered. All six detectors read every line of every video, so the fine-tuned
+BGE models (one detector and two edge models, 33M parameters each) were paid across the whole video,
+including the nine tenths of it that is obviously the show. The gate: the five cheap detectors sweep
+first, take their strongest score within 15 lines, and only lines above a cut go to the fine-tuned
+three. Everything else takes that model's median score. Same stack, same fixed thresholds.
+
+Holdout 4, 64 fresh videos, B = 10 with the averaged edge heads:
+
+| share of lines the fine-tuned models read | ad time | show lost | over 60 s |
+|---|---|---|---|
+| **all of them (the system as measured)** | **68.4%** | **7.9 s** | 0.0% |
+| 50% | 68.4% | 7.9 s | 0.0% |
+| **30%, all three models gated** | **68.4%** | **7.9 s** | 0.0% |
+| 20%, detector only | 68.3% | 7.9 s | 0.0% |
+| 20%, all three gated | 66.9% | 7.9 s | 0.0% |
+| 10%, detector only | 62.2% | 6.9 s | 1.6% |
+| 5%, detector only | 44.4% | 3.7 s | 0.0% |
+
+**Adopted at 30%.** The grade does not move at all there, to the decimal, so two thirds of the
+expensive work was waste. 20% is fine for the detector alone but costs 1.5 points once the edge
+models are gated too, because `place` searches 20 lines past a region while the gate reaches 15 --
+and gating only the detector is worse overall, since the other two then still read every line. At
+10% the detector itself starts missing reads. So 30% is a floor, not a dial.
+
+The cut is the reach score's 70th percentile on the POOLED data, stored in the bundle, so a video is
+never judged against itself; a video with no ad in it simply sends fewer lines through. Serving
+applies it in `serve_candidate.CandidateTier.regions`.
+
 ### The measured system was never the shipped system (2026-09-22, `export_candidate.py`, `serve_candidate.py`)
 
 Two days of gains lived only in evaluation code. `candidate.py` refits the six detectors on all
