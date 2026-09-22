@@ -588,6 +588,16 @@ Claude's 8 videos over 60 s are mostly false alarms (6 of 8), product talk again
 video, a gadget review, a sports podcast, an "AI side hustle" video). Sonnet is being measured on
 the same 160 to see whether a stronger model removes them.
 
+### qwen3:8b as a detector (2026-09-22, `qwen_sweep.py`, `qwen_eval.py`, `overlap.py`)
+
+qwen answered all 3,026 windows of the 205 pooled videos (yes/no plus the read's line range),
+recorded once. Alone, as it answers: **70.4% of ad time but 50.0 s of show lost per video, 28.3% of
+videos over 60 s**: high recall, poor precision. In the stack + BGE (averaged heads, three BGE
+seeds): B = 5 49.8 / 56.5 / 49.8% vs 49.6 / 50.3 / 51.0% without it; B = 10 61.8 / 65.5 / 64.2% vs
+62.0 / 62.4 / 61.8%: a small, inconsistent gain (0 to +3 points at B = 10). The overlap analysis with
+qwen in (Simon's question from 2026-09-21): qwen catches **22.7% of all ad time that no other
+detector catches**; everything together catches 79.8% but would lose 66 s of show per video.
+
 ## Notes worth keeping
 
 - **SponsorBlock's CSV dumps are switched off** (bandwidth); the hash-prefix API
