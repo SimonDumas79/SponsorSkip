@@ -1039,3 +1039,12 @@ the video is ending. About 6 are genuine mid-video pitches for the creator's own
 the host's own finance site twice, live-show tickets, a wallpaper app, a friend's podcast). So the
 29.2% overstates the problem: the real target is ~6 own-product pitches, too few to train on alone.
 Metric question for Simon: count end-of-video outros as ad time or not.
+
+**English sponsor reads with no cue word, read by hand** (2026-09-24, 18 missed or mostly missed in the
+160). Integrated product use with no "sponsored by": 7 (microwave bowl covers, a microdermabrasion
+tool, car perfume twice, pepper spray, Elgato's prompter, World of Tanks). Cold opens in the first 15%
+of the video: 7 (overlaps the above). Giveaway announcements: 3. Caption failures ("VPN.", "foreign
+foreign"): 2. One story-style lead-in. No brand-name signal has ever been tried (checked README and
+scripts). Next idea: a sponsor-brand list mined from the text of training reads, used like the qwen veto
+(keep a loose extra find only if it names a known sponsor brand) rather than as another input, since
+inputs overfit.
