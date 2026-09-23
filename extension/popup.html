@@ -44,13 +44,11 @@
 
   <section class="card">
     <strong>Reader</strong>
-    <label class="choice"><input type="radio" name="reader" value="claude" /> Claude, through Claude Code <span class="tag">recommended</span></label>
-    <label class="choice"><input type="radio" name="reader" value="local" /> Local GPU first (qwen3), Claude checks anything unconfirmed</label>
-    <label class="choice"><input type="radio" name="reader" value="marker" /> Free marker on this PC: no language model, skips only what it is sure of</label>
-    <label class="choice"><input type="radio" name="reader" value="marker-candidate" /> Free marker, new version: six detectors and a fine-tuned model, skips more and cuts less show</label>
-    <label class="choice"><input type="radio" name="reader" value="marker-cascade" /> Free marker finds the reads, Claude places each edge: most ad skipped for the least show lost</label>
-    <label class="choice"><input type="radio" name="reader" value="marker-qwen" /> Free marker + your GPU checks each find (qwen3): skips more</label>
-    <p class="muted small">Claude found 6 of 6 sponsor reads in testing, placing starts within 2 s. The local model found 6 of 6 too, but put half the starts a whole minute late, so Claude re-reads whatever it cannot confirm.</p>
+    <label class="choice"><input type="radio" name="reader" value="marker-v3" /> 1. Free marker on this PC: no language model, skips only what it is sure of</label>
+    <label class="choice disabled" title="Not built yet"><input type="radio" name="reader" value="marker-v3-check" disabled /> 2. Free marker + your GPU checks each find <span class="tag">coming</span></label>
+    <label class="choice"><input type="radio" name="reader" value="marker-v3-cascade" /> 3. Free marker finds the reads, Claude places each edge</label>
+    <label class="choice"><input type="radio" name="reader" value="claude" /> 4. Claude reads the whole video <span class="tag">most accurate</span></label>
+    <p class="muted small">Levels 1 and 2 never leave this PC. Levels 3 and 4 use Claude Code on your subscription; level 3 sends Claude only the few lines around each find.</p>
     <label class="choice"><input type="checkbox" id="skipSelfpromo" /> Skip self-promotion too (merch, Patreon, memberships)</label>
   </section>
 

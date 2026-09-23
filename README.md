@@ -28,6 +28,15 @@ Submissions use a private SponsorBlock user ID the extension creates once and ke
 
 ## Readers (popup setting)
 
+**0.8.0: the popup offers four levels** (Simon's decision, 2026-09-22):
+
+1. **Free marker** (`?reader=marker-v3`, `predict.py serve --tier v3`): candidate v3, seven detectors including the community SponsorBlock model, CPU only, about 35-60 s a video. v3 on holdout 4: 67.2% of ad time at 5.5 s of show lost per video.
+2. **Free marker + your GPU checks each find**: shown but disabled, not built yet. The design (v3 at a looser threshold, with qwen removing false finds) waits on Simon.
+3. **Free marker finds, Claude places each edge** (`?reader=marker-v3-cascade`, `--tier v3-cascade`): v3's regions, then Claude Haiku gets only the lines around each one and says where it starts and ends. If Claude fails, our edge heads are used. Not yet measured on v3's regions (the cascade's 71.2% / 4.6 s was on v2's).
+4. **Claude reads the whole video** (`claude`): default.
+
+A saved 0.7.x setting is rewritten once: `marker`, `marker-candidate` and `marker-qwen` become level 1, `marker-cascade` becomes level 3, `local` becomes level 4. The program still accepts the old reader names. A cached reading is only reused for the reader that made it. The rest of this section describes the 0.7.x readers, kept for the record.
+
 - **Claude through Claude Code: default.**
 - **Local GPU first** (qwen3:8b via Ollama): the GPU reads, and Claude re-reads whenever the local answer cannot be confirmed — when it misses a SponsorBlock segment, when SponsorBlock has nothing to check it against, or when the GPU found nothing at all. (Until 0.6.0 the check only fired on a *disagreement*, and `[].every()` is true, so on any video SponsorBlock did not already cover the local answer was accepted unverified — exactly the videos this extension exists for.) The model is unloaded right after each video, and it's skipped when the GPU is busy (over 2.5 GB used) or warm (78 °C or more). It isn't the default because it measured far worse (below).
 

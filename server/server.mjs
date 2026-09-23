@@ -88,13 +88,19 @@ const STEPS = {
   markerQwen: "The marker finds, your GPU checks each find",
   markerCandidate: "Reading with six detectors and the fine-tuned model",
   markerCascade: "Found the reads, now placing their edges exactly",
+  markerV3: "Reading with seven detectors (v3)",
+  markerV3Cascade: "v3 found the reads, Claude is placing their edges",
 };
 function stage(id, step, extra = {}) {
   const was = partial.get(id) ?? { segments: [] };
   partial.set(id, { ...was, ...extra, step, label: STEPS[step] ?? step });
 }
 function analyze(id, { reader = "claude", fresh = false } = {}) {
-  const cached = fresh ? null : readCache(id);
+  // A reading is cached per video, but the popup lets you switch reader: a cached reading by a
+  // different reader is not the answer that was asked for, so read again. (Old cache files and
+  // SponsorBlock fallbacks carry no reader and are kept.)
+  let cached = fresh ? null : readCache(id);
+  if (cached?.reader && cached.reader !== reader) cached = null;
   if (cached) {
     log(id, "cached", `${cached.segments?.length ?? 0} segment(s)`);
     return Promise.resolve(cached);
@@ -204,9 +210,10 @@ async function readWithAgents(id, video, reader) {
   // The marker readers, opt-in. marker-qwen needs the GPU; when the GPU is busy or warm it runs as
   // the free tier instead, and says so. SponsorBlock only if the marker itself fails.
   if (reader === "marker" || reader === "marker-qwen" || reader === "marker-candidate" ||
-      reader === "marker-cascade") {
+      reader === "marker-cascade" || reader === "marker-v3" || reader === "marker-v3-cascade") {
     let tier = reader === "marker-qwen" ? "qwen" : reader === "marker-candidate" ? "candidate"
-      : reader === "marker-cascade" ? "cascade" : "free";
+      : reader === "marker-cascade" ? "cascade" : reader === "marker-v3" ? "v3"
+      : reader === "marker-v3-cascade" ? "v3-cascade" : "free";
     if (tier === "qwen") {
       const blocker = await localBlocker();
       if (blocker) {
@@ -218,6 +225,7 @@ async function readWithAgents(id, video, reader) {
     try {
       const t0 = Date.now();
       stage(id, tier === "qwen" ? "markerQwen" : tier === "candidate" ? "markerCandidate"
+        : tier === "v3" ? "markerV3" : tier === "v3-cascade" ? "markerV3Cascade"
         : tier.startsWith("cascade") ? "markerCascade" : "marker");
       const segments = await readMarker(id, video, root, { tier });
       tried.push({ agent, outcome: `${segments.length} segment(s)`, seconds: Math.round((Date.now() - t0) / 1000) });
@@ -318,7 +326,7 @@ const server = http.createServer(async (req, res) => {
     }
     const asked = url.searchParams.get("reader");
     const reader = ["local", "marker", "marker-qwen", "marker-candidate",
-                    "marker-cascade"].includes(asked) ? asked : "claude";
+                    "marker-cascade", "marker-v3", "marker-v3-cascade"].includes(asked) ? asked : "claude";
     return send(res, 200, await analyze(id, { reader, fresh: url.searchParams.get("fresh") === "1" }));
   } catch (error) {
     log("FAILED", url.pathname, String(error.message).slice(0, 200));

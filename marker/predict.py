@@ -265,7 +265,8 @@ def main() -> int:
     grade_cmd.add_argument("bundles", type=Path, nargs="+")
     serve = sub.add_parser("serve", help="read {videoID, channel, duration, lines:[{start,text}]} on stdin, "
                                          "write {segments} on stdout: how server/agents.mjs calls it")
-    serve.add_argument("--tier", choices=["free", "qwen", "candidate", "cascade", "cascade-local"], default="free")
+    serve.add_argument("--tier", choices=["free", "qwen", "candidate", "cascade", "cascade-local", "v3", "v3-cascade"],
+                       default="free", help="v3 and v3-cascade are the popup's levels 1 and 3")
     serve.add_argument("--budget", type=int, choices=[5, 10], default=10,
                        help="candidate tier: seconds of real show it may lose per video")
     args = ap.parse_args()
@@ -283,6 +284,12 @@ def main() -> int:
             from serve_candidate import CandidateTier
             with_ = "local" if args.tier == "cascade-local" else os.environ.get("SPONSORSKIP_MODEL", "haiku")
             segments = CandidateTier(device="cpu", budget=args.budget, edges_with=with_).segments(caps)
+        elif args.tier.startswith("v3"):
+            # Simon's selector (2026-09-22): level 1 is v3 alone; level 3 is v3 finding the reads and
+            # Claude placing each one's edges. Level 4 (Claude reads everything) is not this script.
+            from serve_candidate import CandidateTier
+            with_ = os.environ.get("SPONSORSKIP_MODEL", "haiku") if args.tier == "v3-cascade" else None
+            segments = CandidateTier(device="cpu", budget=args.budget, v3=True, edges_with=with_).segments(caps)
         elif args.tier == "candidate":
             from serve_candidate import CandidateTier
             segments = CandidateTier(device="cpu", budget=args.budget).segments(caps)

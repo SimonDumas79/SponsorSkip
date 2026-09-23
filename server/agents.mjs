@@ -264,6 +264,8 @@ export const AGENTS = {
   "marker-candidate": "marker candidate: six detectors + fine-tuned BGE (CPU)",
   "marker-cascade": `marker finds, claude-${CLAUDE_MODEL} places each edge`,
   "marker-qwen": `marker + ${LOCAL_MODEL} checks (local GPU)`,
+  "marker-v3": "marker v3: seven detectors incl. the community model (CPU)",
+  "marker-v3-cascade": `marker v3 finds, claude-${CLAUDE_MODEL} places each edge`,
 };
 
 const PYTHON = process.env.SPONSORSKIP_PYTHON || "python";
@@ -276,7 +278,9 @@ const PYTHON = process.env.SPONSORSKIP_PYTHON || "python";
 // The candidate tier runs three encoders on the CPU. With the cheap-five gate it reads about a third
 // of the lines, so a median video is ~20 s, but the longest transcript in our corpus is 3,119 lines
 // and would crowd the old 180 s.
-const MARKER_TIMEOUTS = { qwen: 600_000, cascade: 420_000, "cascade-local": 600_000, candidate: 300_000, free: 180_000 };
+// v3 adds the community model, about a minute of CPU on a 35-minute video.
+const MARKER_TIMEOUTS = { qwen: 600_000, cascade: 420_000, "cascade-local": 600_000, candidate: 300_000, free: 180_000,
+                          v3: 420_000, "v3-cascade": 540_000 };
 
 export function readMarker(id, video, root, { tier = "free", timeoutMs = MARKER_TIMEOUTS[tier] ?? 180_000 } = {}) {
   return new Promise((resolve, reject) => {

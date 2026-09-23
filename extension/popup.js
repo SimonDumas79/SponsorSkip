@@ -1,5 +1,12 @@
 const api = globalThis.browser ?? globalThis.chrome;
 const DEFAULTS = { enabled: true, skipSelfpromo: true, reader: "claude" };
+// Simon's four levels (2026-09-22). Settings saved by 0.7.x name readers that are gone; each maps to
+// the level that replaced it. Level 2 (your GPU checks v3) is not built yet, so marker-qwen lands on 1.
+const READERS = ["marker-v3", "marker-v3-cascade", "claude"];
+const LEGACY_READERS = { marker: "marker-v3", "marker-candidate": "marker-v3", "marker-qwen": "marker-v3",
+                         "marker-cascade": "marker-v3-cascade", local: "claude" };
+const readerFor = (r) => (READERS.includes(r) ? r : LEGACY_READERS[r] ?? "claude");
+
 const $ = (id) => document.getElementById(id);
 const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 
@@ -10,11 +17,8 @@ let readerSetting = DEFAULTS.reader;
 // visibly to a finish -- so "found nothing" never looks like "it broke".
 const STEP_ORDER = {
   claude: ["captions", "opening", "full"],
-  local: ["captions", "gpu", "verify", "full"],
-  marker: ["captions", "marker"],
-  "marker-candidate": ["captions", "markerCandidate"],
-  "marker-cascade": ["captions", "markerCandidate", "markerCascade"],
-  "marker-qwen": ["captions", "markerQwen"],
+  "marker-v3": ["captions", "markerV3"],
+  "marker-v3-cascade": ["captions", "markerV3", "markerV3Cascade"],
 };
 const STEP = {
   captions: { label: "Fetching captions", color: "#7aa2f7" },
@@ -26,6 +30,8 @@ const STEP = {
   markerCandidate: { label: "Six detectors reading", color: "#73daca" },
   markerCascade: { label: "Placing each edge", color: "#b4f9f8" },
   markerQwen: { label: "The marker finds, your GPU checks", color: "#2ac3de" },
+  markerV3: { label: "Seven detectors reading", color: "#73daca" },
+  markerV3Cascade: { label: "Claude placing each edge", color: "#b4f9f8" },
 };
 
 function renderSteps(reading) {
@@ -60,6 +66,11 @@ function renderSteps(reading) {
 
 async function loadSettings() {
   const s = { ...DEFAULTS, ...(await api.storage.sync.get(DEFAULTS)) };
+  // Rewrite a 0.7.x setting once, so the popup, the page and the program all agree on the level.
+  if (readerFor(s.reader) !== s.reader) {
+    s.reader = readerFor(s.reader);
+    api.storage.sync.set({ reader: s.reader });
+  }
   readerSetting = s.reader;
   $("enabled").checked = s.enabled;
   $("skipSelfpromo").checked = s.skipSelfpromo;

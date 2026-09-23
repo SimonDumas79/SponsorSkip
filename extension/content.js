@@ -92,8 +92,11 @@
       segments = pick(result);
       if (!quick.data.interim) return announce();
     }
-    const reading = { local: "SponsorSkip: reading the transcript on your GPU…", marker: "SponsorSkip: the free marker is reading the transcript…", "marker-candidate": "SponsorSkip: six detectors are reading the transcript…", "marker-cascade": "SponsorSkip: found the reads, placing their edges…", "marker-qwen": "SponsorSkip: the marker is reading, your GPU checks each find…" };
-    if (settings.enabled) toast(reading[settings.reader] ?? "SponsorSkip: Claude is reading the transcript…");
+    // Not named `reading`: a const of that name here shadowed the outer `let reading` for the whole
+    // function, so `reading = null` at its top threw and no video was ever sent to the program (0.7.0).
+    const startToast = { "marker-v3": "SponsorSkip: the free marker is reading the transcript…",
+                         "marker-v3-cascade": "SponsorSkip: the free marker is finding the reads, Claude places their edges…" };
+    if (settings.enabled) toast(startToast[settings.reader] ?? "SponsorSkip: Claude is reading the transcript…");
     reading = { step: "captions", label: "Fetching captions", segments: [] };
     const analyzing = send({ type: "analyze", id, reader: settings.reader, fresh });
     // The reader works through the transcript in overlapping parts. Take each

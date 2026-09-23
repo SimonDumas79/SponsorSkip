@@ -84,11 +84,23 @@ async function sbSubmit({ id, start, end, category, duration }) {
   }
 }
 
+// Simon's four levels (2026-09-22). Settings saved by 0.7.x name readers that are gone; each maps to
+// the level that replaced it. Level 2 (your GPU checks v3) is not built yet, so marker-qwen lands on 1.
+const READERS = ["marker-v3", "marker-v3-cascade", "claude"];
+const LEGACY_READERS = { marker: "marker-v3", "marker-candidate": "marker-v3", "marker-qwen": "marker-v3",
+                         "marker-cascade": "marker-v3-cascade", local: "claude" };
+const readerFor = (r) => (READERS.includes(r) ? r : LEGACY_READERS[r] ?? "claude");
+// Migrate a saved 0.7.x setting as soon as the worker starts, so the page's own toast (which reads the
+// setting directly) names the level that will actually run, even if the popup is never opened.
+api.storage.sync.get({ reader: "claude" }).then(({ reader }) => {
+  if (readerFor(reader) !== reader) api.storage.sync.set({ reader: readerFor(reader) });
+});
+
 api.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   const route = {
     health: () => call("/health", 20_000),
     quick: () => call(`/quick/${msg.id}`, 15_000),
-    analyze: () => call(`/analyze/${msg.id}?reader=${["local", "marker", "marker-qwen", "marker-candidate", "marker-cascade"].includes(msg.reader) ? msg.reader : "claude"}${msg.fresh ? "&fresh=1" : ""}`, 300_000),
+    analyze: () => call(`/analyze/${msg.id}?reader=${readerFor(msg.reader)}${msg.fresh ? "&fresh=1" : ""}`, 600_000),
     progress: () => call(`/progress/${msg.id}`, 10_000),
     sbLookup: () => sbLookup(msg.id),
     sbSubmit: () => sbSubmit(msg),
