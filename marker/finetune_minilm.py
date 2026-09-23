@@ -250,7 +250,7 @@ def main() -> int:
                     help="write the trained weights here, so the detector can be SERVED and not only measured")
     ap.add_argument("--train-only", action="store_true",
                     help="train on every pooled line and save the checkpoint; score nothing. The export path.")
-    ap.add_argument("--target", choices=["inside", "start", "resume"], default="inside",
+    ap.add_argument("--target", choices=["inside", "start", "resume", "claude-nonsponsor", "claude-any"], default="inside",
                     help="inside a read (the recipe of record), or the soft start / resume line labels the edge heads use")
     ap.add_argument("--tag", default="", help="names the output: finetune_oof_<tag>_seed<seed>.npy (empty = the recipe of record)")
     ap.add_argument("--score", nargs=2, metavar=("EXAMPLES", "FEATURES"),
@@ -267,6 +267,11 @@ def main() -> int:
     data = pairs(rows, line_texts(rows))
     if args.target == "inside":
         y = rows.y.astype(np.float32)
+    elif args.target.startswith("claude-"):
+        # Claude's category labels (claude_label.py --categories, 2026-09-24): every non-sponsor promotional
+        # READ (own product, other promo, channel plug), or every promotional segment of any kind.
+        from category_detector import claude_targets
+        y = claude_targets(rows)["non-sponsor" if args.target == "claude-nonsponsor" else "any promo"].astype(np.float32)
     else:
         from edge_heads import soft
         y = soft(is_start if args.target == "start" else is_resume, rows.video).astype(np.float32)

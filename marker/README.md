@@ -1082,3 +1082,14 @@ v3 (seed 0, B = 10, out-of-fold) against these labels on the 160: **sponsor read
 32.8%; channel_plug reads 11.5% (88.0% never touched); every "mention" under 16%. The own-product read is
 the gap Simon pointed at: long enough to matter (1,602 s over 48 reads, ~33 s each) and almost unseen.
 Simon (09-24): end-of-video plugs count as ad time, so channel_plug reads are in scope too.
+
+### Detectors trained on Claude's categories (2026-09-24, `category_detector.py`)
+
+Linear models on the 395 frozen line features, channel-grouped folds over all 205 videos. Out-of-fold
+average precision: own-product + other-promo reads **0.037** (chance 0.010; 45 videos), all non-sponsor
+promo reads **0.184** (chance 0.016; 116 videos), any promotion 0.621 (chance 0.074). SponsorBlock's
+selfpromo labels gave 0.011 against 0.005: Claude's separated labels are far easier to learn.
+As a veto on v3's loose extras (B = 10, 3 seeds, SponsorBlock labels): +0.0 to +1.5 points, below qwen's
++2-4; against Claude's any-promo labels, nothing. As their own region source added to v3: no threshold
+meets the B = 10 rule (too imprecise alone). Structural reason: a veto can only keep what v3 found
+loosely, and v3 never touches 73% of own-product reads. Next: the same target fine-tuned (BGE-small).
