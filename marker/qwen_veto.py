@@ -59,6 +59,19 @@ def line_texts(rows) -> list[str]:
     return out
 
 
+def brand_vocabulary(rows, texts: list[str], min_channels: int = 2, min_inside: float = 0.6) -> set[str]:
+    """The brand words from ALL pooled reads, for a set of channels none of them came from."""
+    from collections import Counter, defaultdict
+    inside, total, chans = Counter(), Counter(), defaultdict(set)
+    for k, t in enumerate(texts):
+        for w in set(WORD.findall(t.lower())):
+            total[w] += 1
+            if rows.y[k]:
+                inside[w] += 1
+                chans[w].add(str(rows.channel[k]))
+    return {w for w in inside if len(chans[w]) >= min_channels and inside[w] / total[w] >= min_inside}
+
+
 def brand_lines(rows, texts: list[str], min_channels: int = 2, min_inside: float = 0.6) -> np.ndarray:
     """1 on lines naming a word that marks sponsor reads in OTHER channels (leave-one-channel-out).
 
@@ -98,6 +111,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--windows", help="write the sweep windows overlapping any loose find, then stop")
     ap.add_argument("--selfpromo", action="store_true", help="also try a self-promo model as the checker (Simon, 09-24)")
+    ap.add_argument("--save", action="store_true", help="write the seed-0 thresholds (and brand list) for a holdout")
     ap.add_argument("--brand", action="store_true", help="also try the brand-list veto")
     ap.add_argument("--think", action="store_true", help="use the reasoning-on answers (qwen_sweep_think.jsonl)")
     a = ap.parse_args()
@@ -172,6 +186,7 @@ def main() -> int:
         checkers = {"qwen": q, "self-promo model": spf, "qwen or self-promo model": q | spf}
     heads = ((p_start + fs) / 2)[unseen], ((p_end + fe) / 2)[unseen]
     local = {str(v): np.flatnonzero(S.video == v) for v in np.unique(S.video)}
+    fixed = {}
     for seed in (0, 1, 2):
         sc = np.load(DATA / f"stack_sbml_oof_s{seed}.npy")[1]
         base = graded(sweep_fine(sc, S, *heads), S)
@@ -191,8 +206,18 @@ def main() -> int:
                         if ok:
                             keep[v] = ok
                     cands.append((float(lo_th), place(keep, S, *heads)))
-                print(line(f"s{seed} B={b:>2} loose v3 + {cname} {mode}", pick(graded(cands, S), b)), flush=True)
+                chosen = pick(graded(cands, S), b)
+                print(line(f"s{seed} B={b:>2} loose v3 + {cname} {mode}", chosen), flush=True)
+                if seed == 0 and mode == "veto the extras" and chosen:
+                    fixed.setdefault(cname, {})[b] = {"loose": chosen[0], "strict": strict[b]}
         print(flush=True)
+    if a.save:
+        # Pre-registration 4: the thresholds a holdout is graded with, chosen here on seed-0 out-of-fold
+        # scores by the written rule, exactly as export_candidate.py chose v3's own. Written before the set exists.
+        json.dump(fixed, open(DATA / "veto_thresholds.json", "w"), indent=1)
+        if a.brand:
+            json.dump(sorted(brand_vocabulary(rows, line_texts(rows))), open(DATA / "brand_words.json", "w"), indent=0)
+        print(f"saved veto_thresholds.json{' and brand_words.json' if a.brand else ''}")
     return 0
 
 

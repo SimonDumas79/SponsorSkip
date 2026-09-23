@@ -193,3 +193,37 @@ between videos, after a 10-minute cool-off, so the crawl is rescheduled with a 9
 Graded once, with the thresholds above, against: the shipped free tier, the candidate with our own
 edge heads, and the cascade. The comparison that decides whether the cascade ships is the cascade
 against the candidate **on that set**, not on holdout 4.
+
+## Pre-registration 4: everything that could be packaged (written 2026-09-24, before holdout 5 is built)
+
+Simon: "Run the test and present all of the data to me and I will make decisions on what to package."
+Holdout 5 is built exactly as pre-registration 3 defines it (every caption file whose channel is in
+none of the six earlier sets; 45 such videos exist now, over the 40 minimum). The crawl keeps running;
+videos it fetches after the build belong to a later holdout, not this one.
+
+**Graded once, all on the same holdout-5 videos, with SponsorBlock's sponsor + selfpromo labels:**
+
+| | system | thresholds (fixed before the set exists) |
+|---|---|---|
+| A | cue patterns, no model | none |
+| B | `free_tier.pt` (served until 0.8.0) | its own |
+| C | candidate v2 (six detectors), + chapters | `candidate.pt` thresholds_v2, B = 5 and 10 |
+| D | candidate v3 (+ community model), + chapters: **level 1 in 0.8.0** | `candidate.pt` v3 thresholds |
+| E | v3, loose, extras kept only if they name a brand word (`brand_words.json`, mined from all 205 pooled reads) | `veto_thresholds.json` "brand" |
+| F | v3, loose, extras kept only if qwen3:8b (reasoning off) says "ad" on a window over them: **level 2 as measured** | `veto_thresholds.json` "qwen" |
+| G | v3 + claude-haiku placing each region's edges: **level 3 in 0.8.0** | v3's |
+| H | the cascade of pre-registration 3 (v2 regions + haiku edges) | `cascade_thresholds.json` |
+| I | claude-haiku reading the whole transcript through the served code (`level4_eval.mjs`): **level 4, the default** | none |
+
+**Reported for each:** ad time skipped, real show lost per video, worst single video, share of videos
+over 60 s, reads touched, and seconds per video on this PC. Model size on disk per level. Secondary:
+Claude category labels (`claude_label.py --categories`) on holdout 5, and each system's share of each
+category's lines skipped, with end-of-video plugs counted as ad time (Simon, 2026-09-24).
+
+Nothing is chosen on holdout 5. The table goes to Simon as it comes out, including anything that
+fails or crashes. If a system cannot be run as specified, that is reported, not patched around.
+
+**Fixed values (seed-0 out-of-fold picks, `qwen_veto.py --brand --save`, before the build):** E and F
+at B = 10: loose 0.98964, strict 0.99593 (= v3's served threshold); at B = 5: loose 0.99838, strict
+0.99837 (the rule chose almost no loosening). `brand_words.json`: 154 words. Level 1-3 grades are
+reported at B = 10 as served, with B = 5 alongside.
