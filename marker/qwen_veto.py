@@ -30,12 +30,74 @@ from train import DATA, Rows
 sys.stdout.reconfigure(encoding="utf-8")
 
 
-LOOSEST = 0.30   # the loosest share of lines any candidate threshold flags (np.geomspace below)
+LOOSEST = 0.30
+WORD = __import__("re").compile(r"[a-z][a-z0-9]{3,}")
+
+
+def line_texts(rows) -> list[str]:
+    """Caption text for every pooled row, in row order (the same order qwen_sweep.windows() uses)."""
+    from qwen_sweep import SETS
+    text = {}
+    for examples, _ in SETS:
+        with (DATA / examples).open(encoding="utf-8") as f:
+            for ln in f:
+                if ln.strip():
+                    r = json.loads(ln)
+                    text[(str(r["videoID"]), int(r["i"]))] = r["text"]
+    out = [""] * len(rows.y)
+    for v in np.unique(rows.video):
+        r = np.flatnonzero(rows.video == v)
+        lines = []
+        for examples, features in SETS:
+            d = np.load(DATA / features)
+            m = d["video"] == v
+            if m.any():
+                lines = [text[(str(v), int(i))] for i in d["line"][m]]
+                break
+        for k, t in zip(r, lines):
+            out[k] = t
+    return out
+
+
+def brand_lines(rows, texts: list[str], min_channels: int = 2, min_inside: float = 0.6) -> np.ndarray:
+    """1 on lines naming a word that marks sponsor reads in OTHER channels (leave-one-channel-out).
+
+    A word is a brand for channel c if it appears inside labelled reads of at least `min_channels` channels
+    other than c, and at least `min_inside` of its lines (outside c) are inside a read. Mined from the text
+    of the reads, not from any list: NordVPN, Squarespace, Manscaped and so on should fall out of it."""
+    from collections import Counter, defaultdict
+    words = [set(WORD.findall(t.lower())) for t in texts]
+    inside, total, chans = defaultdict(Counter), defaultdict(Counter), defaultdict(set)
+    for k, ws in enumerate(words):
+        c = str(rows.channel[k])
+        for w in ws:
+            total[w][c] += 1
+            if rows.y[k]:
+                inside[w][c] += 1
+                chans[w].add(c)
+    tot_all = {w: sum(v.values()) for w, v in total.items()}
+    in_all = {w: sum(v.values()) for w, v in inside.items()}
+    flag = np.zeros(len(texts), dtype=bool)
+    cache = {}
+    for k, ws in enumerate(words):
+        c = str(rows.channel[k])
+        for w in ws:
+            key = (w, c)
+            if key not in cache:
+                n_ch = len(chans[w] - {c})
+                t = tot_all.get(w, 0) - total[w][c]
+                i = in_all.get(w, 0) - inside[w][c]
+                cache[key] = n_ch >= min_channels and t > 0 and i / t >= min_inside
+            if cache[key]:
+                flag[k] = True
+                break
+    return flag   # the loosest share of lines any candidate threshold flags (np.geomspace below)
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--windows", help="write the sweep windows overlapping any loose find, then stop")
+    ap.add_argument("--brand", action="store_true", help="also try the brand-list veto")
     ap.add_argument("--think", action="store_true", help="use the reasoning-on answers (qwen_sweep_think.jsonl)")
     a = ap.parse_args()
     rows, _, _ = pooled()
@@ -69,6 +131,11 @@ def main() -> int:
     else:
         q = qwen_flags(idx, len(rows))[0]
     q = q[unseen].astype(bool)
+    checkers = {"qwen": q}
+    if a.brand:
+        br = brand_lines(rows, line_texts(rows))[unseen]
+        print(f"brand words flag {br.mean():.1%} of lines; {br[S.y == 1].mean():.1%} of read lines", flush=True)
+        checkers = {"qwen": q, "brand": br, "qwen or brand": q | br}
     heads = ((p_start + fs) / 2)[unseen], ((p_end + fe) / 2)[unseen]
     local = {str(v): np.flatnonzero(S.video == v) for v in np.unique(S.video)}
     for seed in (0, 1, 2):
@@ -78,7 +145,7 @@ def main() -> int:
             print(line(f"s{seed} B={b:>2} v3 alone", pick(base, b)), flush=True)
         strict = {b: pick(base, b)[0] for b in (5, 10)}
         for b in (5, 10):
-            for mode in ("veto all", "veto the extras"):
+            for (cname, chk), mode in [((n, c), m) for n, c in checkers.items() for m in ("veto all", "veto the extras")]:
                 cands = []
                 for lo_th in np.unique(np.quantile(sc, 1 - np.geomspace(0.005, 0.30, 40))):
                     found = regions_by_video(sc, S, float(lo_th), 1)
@@ -86,11 +153,11 @@ def main() -> int:
                     for v, spans in found.items():
                         r = local[v]
                         ok = [(a, z) for a, z in spans
-                              if q[r][a:z].any() or (mode == "veto the extras" and sc[r][a:z].max() >= strict[b])]
+                              if chk[r][a:z].any() or (mode == "veto the extras" and sc[r][a:z].max() >= strict[b])]
                         if ok:
                             keep[v] = ok
                     cands.append((float(lo_th), place(keep, S, *heads)))
-                print(line(f"s{seed} B={b:>2} loose v3 + qwen {mode}", pick(graded(cands, S), b)), flush=True)
+                print(line(f"s{seed} B={b:>2} loose v3 + {cname} {mode}", pick(graded(cands, S), b)), flush=True)
         print(flush=True)
     return 0
 

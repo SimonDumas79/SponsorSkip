@@ -1048,3 +1048,12 @@ foreign"): 2. One story-style lead-in. No brand-name signal has ever been tried 
 scripts). Next idea: a sponsor-brand list mined from the text of training reads, used like the qwen veto
 (keep a loose extra find only if it names a known sponsor brand) rather than as another input, since
 inputs overfit.
+
+**Brand-list veto: small, free, positive on all three seeds** (2026-09-24, `qwen_veto.py --brand`). Words
+that mark sponsor reads in at least 2 OTHER channels, with at least 60% of their lines (outside the
+video's own channel) inside a read, mined from the reads' text leave-one-channel-out: they flag 1.2% of
+lines and 9.2% of read lines. Keeping a loose extra find only if it names one, at B = 10: **66.9 / 67.3 /
+67.7%** against v3 alone 64.6 / 66.3 / 67.0% (+2.3 / +1.0 / +0.7), show lost 7.9 / 8.4 / 8.8 s. It needs no
+GPU, so it could improve level 1 itself. Combined with qwen it adds nothing (68.4 / 68.9 / 68.9%): qwen
+already confirms those finds. Not built into serving; small enough to be partly selection noise, so it
+should be confirmed on holdout 5 before shipping.
