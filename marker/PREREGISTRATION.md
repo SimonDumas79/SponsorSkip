@@ -227,3 +227,26 @@ fails or crashes. If a system cannot be run as specified, that is reported, not 
 at B = 10: loose 0.98964, strict 0.99593 (= v3's served threshold); at B = 5: loose 0.99838, strict
 0.99837 (the rule chose almost no loosening). `brand_words.json`: 154 words. Level 1-3 grades are
 reported at B = 10 as served, with B = 5 alongside.
+
+## Result 4: holdout 5 (graded once, 2026-09-24; `data/grade_holdout5.log`, `cascade_holdout5.log`, `level4_holdout5.jsonl`)
+
+46 videos, 61 reads, 46 channels. B = 10 unless marked. Ad time and show lost against SponsorBlock labels.
+
+| | system | ad time | show lost / video | worst video | over 60 s | reads missed |
+|---|---|---|---|---|---|---|
+| A | cue patterns | 32.3% | 18.3 s | 78 s | | |
+| B | free_tier.pt | 43.4% | 9.5 s | 104 s | | |
+| C | v2 + chapters | 53.5% | 5.8 s | 49 s | 0% | 41% |
+| D | **v3 + chapters (level 1)** | **62.7%** | **4.7 s** | 49 s | 0% | 41% |
+| E | loose v3 + brand words | 63.4% | 6.0 s | 52 s | 0% | 38% |
+| F | loose v3 + qwen (level 2) | 65.6% | 6.8 s | 52 s | 0% | 34% |
+| G | v3 + haiku edges (level 3) | 61.9% | 7.5 s | 49 s | 0% | 44% |
+| H | cascade (pre-reg 3) | 49.4% | 6.1 s | | 2.2% | 46% |
+| I | Claude whole transcript (level 4, served) | 73.2% | 28.7 s | 575 s | 10.9% | 21% |
+
+B = 5: C 39.1% / 3.9 s, D 54.1% / 2.7 s, E and F identical to D (the rule loosened nothing), G 52.6% / 3.8 s.
+Level 3: haiku answered 62 of 62 regions, only 8 answers inside the acceptance window; the rest kept
+our heads. Level 4: 3 of 46 reads failed (Claude killed at ~240 s); its worst losses are runaway ends
+(0-637 s for a 65 s read), which the labeller's 180 s cap would have stopped; not patched on this set.
+Pre-registration 3's decision: the cascade (H) does not beat the candidate (C) on this set; it does not ship.
+CPU seconds per video (5 videos, 4-79 min): free 10-12, v2 18-62, v3 22-72.

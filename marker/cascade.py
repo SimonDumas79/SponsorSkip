@@ -112,6 +112,11 @@ def run_edges(which: str, model: str, workers: int, budget: int, dev: str, local
         lines_by_video[str(v)] = [{"text": texts[k], "start": float(T.start_seconds[k])} for k in r]
 
     th = c.thresholds_v2[budget]
+    # Pre-registration 3 fixed the cascade's own thresholds on the pooled videos with Claude's edges in
+    # place (cascade_pooled.py). Grading it with v2's would grade a different system (fixed 2026-09-24).
+    registered = DATA / "cascade_thresholds.json"
+    if which == "holdout5" and registered.exists():
+        th = float(json.loads(registered.read_text())[str(budget)])
     found = regions_by_video(ctx, T, th, 1)
     jobs = [(vid, int(lo), int(hi)) for vid, spans in found.items() for lo, hi in spans]
     print(f"{which}: {T.videos} videos, {T.reads} reads; the cheap layers found {len(jobs)} regions "
