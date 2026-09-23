@@ -1002,3 +1002,24 @@ video.
 - **The split is by channel, never at random.** SponsorBlock covers big channels
   with conventional reads best; a model trained on it inherits that bias, and
   only a channel-held-out validation set will show it.
+
+### What v3 misses, and targeting it (2026-09-23 night, `miss_audit.py`, `target_misses.py`, `qwen_veto.py`)
+
+**Miss audit** (v3's out-of-fold scores on the 160 pooled videos, B = 10, reproduces 64.6% / 7.1 s): of
+226 reads, ad time skipped is 76.5% for English reads with a cue word, **52.4% in machine-translated
+captions** (52 of 160 videos), **~37.5% for reads with no cue word** (the same in both languages, so a
+separate failure), **29.2% for English self-promo**. 59.7% of missed ad time is reads never touched,
+40.3% trimmed edges. No "the whole video is the ad" case exists in this data. Full table: `data/miss_audit.md`.
+
+**Three new inputs to v3's context model, 3 seeds each, all worse or inside noise** (B = 10 against v3's
+64.6 / 66.3 / 67.0%): a translated-captions flag 63.7 / 63.9 / 64.3%; Simon's island signal as a
+DETECTOR (window unlike both sides; `island_check.py` had only tried it as a filter) 65.4 / 66.6 / 67.0%
+with +1-2 s lost; qwen's recorded answers as an input 61.9 / 55.1 / 65.9%. With 160 videos the context
+model overfits every added input; new columns are not the lever.
+
+**Level 2 as a veto: consistent gain at B = 10.** v3 at a looser threshold, and a find is kept if its
+peak clears v3's own threshold or qwen's RECORDED answer (reasoning off) said "ad" on a window over it:
+**68.4 / 68.8 / 68.9%** vs 64.6 / 66.3 / 67.0% (+3.8 / +2.5 / +1.9, all three seeds), show lost
+9.5 / 9.7 / 9.3 s (inside B). Requiring qwen on every find: 67.5 / 68.1 / 68.1%. At B = 5 mixed
+(-2.4 to +1.8). A lower bound for the live design (reasoning on); in serving qwen only has to read the
+extra finds, not every window. Not yet built; needs Simon's go.
