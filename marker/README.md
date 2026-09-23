@@ -1093,3 +1093,12 @@ As a veto on v3's loose extras (B = 10, 3 seeds, SponsorBlock labels): +0.0 to +
 +2-4; against Claude's any-promo labels, nothing. As their own region source added to v3: no threshold
 meets the B = 10 rule (too imprecise alone). Structural reason: a veto can only keep what v3 found
 loosely, and v3 never touches 73% of own-product reads. Next: the same target fine-tuned (BGE-small).
+
+**Fine-tuned on Claude's non-sponsor promo reads** (BGE-small, `finetune_minilm.py --target claude-nonsponsor`,
+22 min): out-of-fold average precision **0.380** (chance 0.016), against 0.184 linear and 0.011 for
+SponsorBlock's selfpromo. As its own region source added to v3: fails the B = 10 rule on every seed
+(v3 alone already sits at 1.9% of videos over 60 s against the 2% cap; the strictest setting adds +1.1
+points for +4.9 s). As a veto on v3's loose extras (`category_detector.py --ft`), B = 10: SponsorBlock
+labels 65.7 / 67.6 / 68.3% vs 64.6 / 66.3 / 67.0% (+1.1 to +1.3, +1.3 to +2.2 s); Claude any-promo labels
+57.4 / 60.0 / 60.6% vs 57.5 / 60.9 / 57.5% (inconsistent). A veto cannot reach reads v3 never touches,
+which is where own-product reads are. Proposed to Simon: a separate opt-in self-promo path graded on its own.
