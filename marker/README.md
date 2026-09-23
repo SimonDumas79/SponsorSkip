@@ -1028,4 +1028,4 @@ extra finds, not every window. Not yet built; needs Simon's go.
 near loose v3 finds, 288 min GPU, 0 failures; `qwen_veto.py --think`). B = 10, veto the extras:
 66.7 / 66.4 / 69.1% against reasoning off 68.4 / 68.8 / 68.9% and v3 alone 64.6 / 66.3 / 67.0%; veto
 all 65.8 / 62.7 / 66.6%. Reasoning makes qwen say "ad" less often, and the veto needs its recall. So
-level 2 = loose v3 + qwen with reasoning OFF (cheaper too: about 1.5 s a window against 9.5 s).
+level 2 = loose v3 + qwen with reasoning OFF (cheaper too: 3.0 s a window against 9.5 s, per the two sweep logs).
