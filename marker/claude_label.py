@@ -59,6 +59,32 @@ Answer ONLY with JSON: {"start_line": <number>, "end_line": <number>}
 If there is no sponsor read in these lines at all, answer {"start_line": null, "end_line": null}."""
 
 
+# Categories (Simon, 2026-09-24): split the data by KIND of promotion, and record the style, because the
+# creator's own product "could go either way depending on the style of read". Flat JSON with up to two
+# reads per window, since _ask's parser takes the first {...} and cannot read nested objects.
+CATEGORIES = ("sponsor", "own_product", "channel_plug", "other_promo")
+ASK_CATEGORIES = """You are given numbered caption lines from part of a YouTube video.
+
+Find every PROMOTIONAL segment in these lines and say what kind it is:
+  sponsor       an advertisement for another company that paid the creator (including "thanks to X for sponsoring")
+  own_product   the creator pitching THEIR OWN business: their app, course, website, shop, book, live-show
+                tickets, their other podcast or company
+  channel_plug  asking viewers to like, subscribe, comment, join a membership or Patreon, or buy channel merch
+  other_promo   a giveaway announcement, or promoting ANOTHER creator's channel, podcast or product for free
+
+And its style:
+  read     the video's subject stops for a pitch, like an ad, then resumes (or the video ends)
+  mention  a brief aside inside the normal flow, no real pitch
+
+NOT promotional: a review, unboxing, demonstration or tutorial where the product IS the video's subject;
+a corporate video whose whole purpose is the company; mentioning a previous video without a pitch.
+
+Answer ONLY with flat JSON, no nesting. For up to two segments use keys a_* and b_*:
+{"a_start": N, "a_end": M, "a_category": "sponsor", "a_style": "read", "b_start": null, "b_end": null, "b_category": null, "b_style": null}
+  *_start = the number of the FIRST line of the segment; *_end = the first line after it (where the show resumes).
+If there is no promotional segment, answer with every value null."""
+
+
 def ask_claude(text: str, model: str = "haiku", timeout: float = 120.0, attempts: int = 4) -> dict | None:
     """`attempts` is 4 for a batch sweep, where waiting out a usage limit is free, and 1 when
     serving, where six minutes of retries would strand a video somebody is waiting on."""
@@ -106,10 +132,11 @@ def render(lines: list[dict], lo: int, hi: int) -> str:
     return "\n".join(f"{i - lo:3d}: {lines[i]['text']}" for i in range(lo, hi))
 
 
-def label_video(caps: dict, model: str, verbose: bool = True) -> dict:
+def label_video(caps: dict, model: str, verbose: bool = True, categories: bool = False) -> dict:
     """Every window of one transcript, swept past Claude. Returns merged segments."""
     lines = caps["lines"]
     found: list[tuple[int, int]] = []
+    kinds: dict[tuple[int, int], tuple[str, str]] = {}
     windows = rejected = failed = 0
 
     for lo in range(0, len(lines), STEP_LINES):
@@ -117,9 +144,22 @@ def label_video(caps: dict, model: str, verbose: bool = True) -> dict:
         if hi - lo < 12:
             break
         windows += 1
-        answer = ask_claude(f"{ASK}\n\n{render(lines, lo, hi)}", model=model)   # before 2026-09-22 10:40 the model was never passed: every run was Haiku
+        answer = ask_claude(f"{ASK_CATEGORIES if categories else ASK}\n\n{render(lines, lo, hi)}", model=model)   # before 2026-09-22 10:40 the model was never passed: every run was Haiku
         if isinstance(answer, dict) and "_error" in answer:
             failed += 1   # recorded, never mistaken for "no read"
+            continue
+        if categories and isinstance(answer, dict):
+            for k in ("a", "b"):
+                start, end, cat = answer.get(f"{k}_start"), answer.get(f"{k}_end"), answer.get(f"{k}_category")
+                if start is None:
+                    continue
+                if not isinstance(start, int) or not (0 <= start < hi - lo) or cat not in CATEGORIES:
+                    rejected += 1
+                    continue
+                if not isinstance(end, int) or not (start < end <= hi - lo):
+                    end = min(start + 30, hi - lo)
+                found.append((lo + start, lo + end))
+                kinds[(lo + start, lo + end)] = (cat, answer.get(f"{k}_style") or "read")
             continue
         if not answer or answer.get("start_line") is None:
             continue
@@ -144,12 +184,17 @@ def label_video(caps: dict, model: str, verbose: bool = True) -> dict:
         and (not span or (lines[min(b, len(lines) - 1)]["start"] - lines[a]["start"]) / span <= MAX_READ_FRACTION)
     ]
 
-    merged: list[list[int]] = []
+    merged: list[list] = []
     for start, end in sorted(found):
-        if merged and start <= merged[-1][1] + 3:
+        # In category mode only finds of the SAME category merge: a sponsor read and the Patreon plug right
+        # after it are exactly the distinction the categories exist to keep.
+        kind = kinds.get((start, end))
+        if merged and start <= merged[-1][1] + 3 and (not categories or (merged[-1][2] or ("",))[0] == (kind or ("",))[0]):
             merged[-1][1] = max(merged[-1][1], end)
+            if kind and kind[1] == "read":
+                merged[-1][2] = kind   # a read anywhere in the merged span makes it a read
         else:
-            merged.append([start, end])
+            merged.append([start, end, kind])
 
     segments = [
         {
@@ -157,8 +202,9 @@ def label_video(caps: dict, model: str, verbose: bool = True) -> dict:
             "end_line": b,
             "start": round(lines[a]["start"], 2),
             "end": round(lines[min(b, len(lines) - 1)]["start"], 2),
+            **({"category": k[0], "style": k[1]} if k else {}),
         }
-        for a, b in merged
+        for a, b, k in merged
     ]
     if verbose:
         print(f"  {caps['videoID']}  {len(lines):5d} lines  {windows:3d} windows  "
@@ -215,6 +261,9 @@ def main() -> int:
                     help="restrict to transcripts that do (only) or do not (none) contain a stock sponsor phrase. "
                          "'none' measures what the cue pre-filter would DROP: reads Claude finds in videos no "
                          "regex would have flagged. That number decides whether the filter is safe to use.")
+    ap.add_argument("--categories", action="store_true",
+                    help="label every kind of promotion with a category and style (2026-09-24)")
+    ap.add_argument("--videos", type=Path, help="a JSON list of caption FILE paths to label, instead of --captions")
     args = ap.parse_args()
 
     truth = {v["videoID"]: v["segments"] for v in json.loads(args.candidates.read_text(encoding="utf-8"))}
@@ -228,7 +277,8 @@ def main() -> int:
     if args.out.exists():
         done = {row["videoID"]: row for row in json.loads(args.out.read_text(encoding="utf-8"))}
 
-    paths = [p for p in sorted(args.captions.glob("*.json")) if p.stem not in done]
+    source = [Path(p) for p in json.loads(args.videos.read_text())] if args.videos else sorted(args.captions.glob("*.json"))
+    paths = [p for p in source if p.stem not in done]
     if args.cue:
         want = args.cue == "only"
         paths = [p for p in paths if json.loads(p.read_text(encoding="utf-8")).get("hasCue", False) is want]
@@ -241,7 +291,7 @@ def main() -> int:
 
     def one(path: Path) -> None:
         caps = json.loads(path.read_text(encoding="utf-8"))
-        row = label_video(caps, args.model)
+        row = label_video(caps, args.model, categories=args.categories)
         # Write after every video, so a night's work survives being stopped.
         with lock:
             done[caps["videoID"]] = row
@@ -255,7 +305,8 @@ def main() -> int:
             one(path)
 
     print(f"\n{len(done)} videos labelled in total, this run took {(time.time() - started) / 60:.1f} min")
-    score(list(done.values()), truth)
+    if not args.categories:
+        score(list(done.values()), truth)
     return 0
 
 
