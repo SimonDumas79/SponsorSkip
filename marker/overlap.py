@@ -42,12 +42,13 @@ def to_flags(kept: dict, idx: dict, n: int) -> np.ndarray:
     return f
 
 
-def qwen_flags(idx: dict, n: int):
+def qwen_flags(idx: dict, n: int, path=None, require_complete: bool = True):
     """Lines qwen said are a promotional read, and the videos whose every window it has answered."""
-    if not QWEN.exists():
+    src = path or QWEN
+    if not src.exists():
         return None, set()
     answers = {}
-    with QWEN.open(encoding="utf-8") as f:
+    with src.open(encoding="utf-8") as f:
         for rec in map(json.loads, f):
             if rec.get("promo") is not None:
                 answers[(rec["video"], rec["lo"])] = rec
@@ -57,7 +58,7 @@ def qwen_flags(idx: dict, n: int):
     complete = {v for v, los in need.items() if all((v, lo) in answers for lo in los)}
     flags = np.zeros(n, dtype=bool)
     for (vid, lo), rec in answers.items():
-        if vid not in complete or not rec["promo"]:
+        if (require_complete and vid not in complete) or not rec["promo"] or vid not in idx:
             continue
         r, width = idx[vid], rec["hi"] - rec["lo"]
         s, e = rec.get("start_line"), rec.get("end_line")

@@ -20,6 +20,7 @@ import json
 import subprocess
 import sys
 import time
+from pathlib import Path
 import urllib.error
 import urllib.request
 
@@ -55,9 +56,9 @@ SCHEMA = {"type": "object", "properties": {
     "end_line": {"type": ["integer", "null"]}}, "required": ["promo", "start_line", "end_line"]}
 
 
-def ask(prompt: str, timeout: float = 120.0) -> dict | None:
+def ask(prompt: str, timeout: float = 120.0, think: bool = False) -> dict | None:
     body = json.dumps({
-        "model": MODEL, "stream": False, "think": False, "format": SCHEMA, "keep_alive": "120s",
+        "model": MODEL, "stream": False, "think": think, "format": SCHEMA, "keep_alive": "120s",
         "options": {"num_ctx": 4096, "temperature": 0},
         "messages": [{"role": "user", "content": prompt}],
     }).encode()
@@ -122,11 +123,20 @@ def windows() -> list[dict]:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--limit", type=int, default=0, help="stop after this many NEW windows (0 = all)")
+    ap.add_argument("--think", action="store_true",
+                    help="reasoning on (2026-09-23); records to qwen_sweep_think.jsonl instead")
+    ap.add_argument("--only", type=Path, help="a JSON list of [video, lo] windows to ask (qwen_veto.py --windows)")
     args = ap.parse_args()
+    global OUT
+    if args.think:
+        OUT = DATA / "qwen_sweep_think.jsonl"
     if sys.platform == "win32":
         ctypes.windll.kernel32.SetPriorityClass(ctypes.windll.kernel32.GetCurrentProcess(), 0x4000)
 
     todo = windows()
+    if args.only:
+        want = {(v, int(lo)) for v, lo in json.loads(args.only.read_text())}
+        todo = [w for w in todo if (w["video"], w["lo"]) in want]
     done = set()
     if OUT.exists():
         with OUT.open(encoding="utf-8") as f:
@@ -145,7 +155,7 @@ def main() -> int:
                         time.sleep(300)
                         why = someone_else_needs_the_gpu()
                 rendered = "\n".join(f"{i:3d}: {t}" for i, t in enumerate(w["lines"]))
-                a = ask(f"{ASK}\n\n{rendered}")
+                a = ask(f"{ASK}\n\n{rendered}", timeout=300.0 if args.think else 120.0, think=args.think)
                 rec = {"video": w["video"], "lo": w["lo"], "hi": w["hi"],
                        "promo": None if a is None else bool(a.get("promo")),
                        "start_line": None if a is None else a.get("start_line"),
