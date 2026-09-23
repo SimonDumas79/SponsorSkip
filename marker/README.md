@@ -1029,3 +1029,13 @@ near loose v3 finds, 288 min GPU, 0 failures; `qwen_veto.py --think`). B = 10, v
 66.7 / 66.4 / 69.1% against reasoning off 68.4 / 68.8 / 68.9% and v3 alone 64.6 / 66.3 / 67.0%; veto
 all 65.8 / 62.7 / 66.6%. Reasoning makes qwen say "ad" less often, and the veto needs its recall. So
 level 2 = loose v3 + qwen with reasoning OFF (cheaper too: 3.0 s a window against 9.5 s, per the two sweep logs).
+
+**Self-promo misses, read by hand** (2026-09-24, the 25 English self-promo reads in the 160, from
+`data/miss_audit.csv`). 18 are never touched. Of those, about 6 are doubtful labels: "[music] >> [music]",
+a plain "smash that like button", a story about selling apparel, a bingo-sheet bit, and a "Thanks again
+to DeleteMe for sponsoring" that is a sponsor mention filed as self-promo. About 6 are end-of-video
+outros (last 5%: subscribe, Patreon, merch, "extended thoughts on..."), worth little to a viewer because
+the video is ending. About 6 are genuine mid-video pitches for the creator's own product (an app launch,
+the host's own finance site twice, live-show tickets, a wallpaper app, a friend's podcast). So the
+29.2% overstates the problem: the real target is ~6 own-product pitches, too few to train on alone.
+Metric question for Simon: count end-of-video outros as ad time or not.
