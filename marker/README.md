@@ -1023,3 +1023,9 @@ peak clears v3's own threshold or qwen's RECORDED answer (reasoning off) said "a
 9.5 / 9.7 / 9.3 s (inside B). Requiring qwen on every find: 67.5 / 68.1 / 68.1%. At B = 5 mixed
 (-2.4 to +1.8). A lower bound for the live design (reasoning on); in serving qwen only has to read the
 extra finds, not every window. Not yet built; needs Simon's go.
+
+**Reasoning on does not help the veto** (2026-09-24 early, `qwen_sweep.py --think --only`, 1,822 windows
+near loose v3 finds, 288 min GPU, 0 failures; `qwen_veto.py --think`). B = 10, veto the extras:
+66.7 / 66.4 / 69.1% against reasoning off 68.4 / 68.8 / 68.9% and v3 alone 64.6 / 66.3 / 67.0%; veto
+all 65.8 / 62.7 / 66.6%. Reasoning makes qwen say "ad" less often, and the veto needs its recall. So
+level 2 = loose v3 + qwen with reasoning OFF (cheaper too: about 1.5 s a window against 9.5 s).
