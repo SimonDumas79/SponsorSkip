@@ -1,5 +1,7 @@
 # Connecting an AI model to SponsorSkip
 
+*This file is for developers wiring a new model into the pipeline. To SET UP SponsorSkip for a person, read `SETUP_WITH_AN_AI_AGENT.md` instead.*
+
 SponsorSkip always runs the marker first. The marker is local, free, needs no network and no
 language model: it finds where the sponsor reads are. A model is optional and does exactly one job
 on top of that — saying where each read it found **starts and ends**.

@@ -4,6 +4,8 @@ A Chrome and Firefox extension that skips sponsor reads in YouTube videos. **Cla
 
 Built 2026-09-18 for Simon. Personal and local: the program the extension talks to listens on `127.0.0.1` only.
 
+**Setting it up with an AI agent:** point your agent (Claude Code or similar) at `SETUP_WITH_AN_AI_AGENT.md`. Licence: GPL-3.0 for the code, CC BY-NC-SA 4.0 for the models (`NOTICE.md`). Privacy: `PRIVACY.md`.
+
 ## How it works
 
 1. **The extension** (`extension/`, one codebase, Manifest V3, Chrome and Firefox) watches YouTube. When a video opens, it asks the SponsorSkip program on this PC for the sponsor segments, then skips any the playhead enters, with an **Undo** button. It stays still during YouTube's own ads. The popup shows the connection, what was found on the current video, settings (on/off, reader, and self-promotion skipping: merch, Patreon, memberships, on by default since 0.4.1), and the review list for SponsorBlock. While a video is being read the popup shows a **labelled progress strip**, one coloured bar per step, so a reading that finds nothing still visibly runs to a finish and says **"No sponsor reads in this video"** — a result, not a failure. **The popup updates itself while it is open**, so a reading that finishes with it up fills in on its own, and a review already under way is left alone. **Settings sync with your browser account.**
