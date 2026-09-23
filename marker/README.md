@@ -1057,3 +1057,12 @@ lines and 9.2% of read lines. Keeping a loose extra find only if it names one, a
 GPU, so it could improve level 1 itself. Combined with qwen it adds nothing (68.4 / 68.9 / 68.9%): qwen
 already confirms those finds. Not built into serving; small enough to be partly selection noise, so it
 should be confirmed on holdout 5 before shipping.
+
+**A separate self-promo model: it barely learns** (2026-09-24, Simon's idea, `qwen_veto.py --selfpromo`).
+Logistic regression on the same 395 line features, self-promo lines only (479 lines, 32 reads in the
+160), channel-grouped 5-fold: out-of-fold average precision **0.011 against 0.005 by chance**. Used as a
+veto on v3's loose extras (its top 2% of lines): 66.3 / 67.4% at B = 10 (seeds 0-1) against v3's 64.6 /
+66.3%, below qwen's 68.4 / 68.8%, and nothing added on top of qwen. With a model that weak, the gain is
+most likely the loose threshold itself letting a few more real finds through, not self-promo detection.
+32 reads (a third doubtful) are too few; more self-promo examples would have to come first (the
+channel set has 18 more, but it is reserved as a test set).

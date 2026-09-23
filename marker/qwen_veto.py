@@ -97,6 +97,7 @@ def brand_lines(rows, texts: list[str], min_channels: int = 2, min_inside: float
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--windows", help="write the sweep windows overlapping any loose find, then stop")
+    ap.add_argument("--selfpromo", action="store_true", help="also try a self-promo model as the checker (Simon, 09-24)")
     ap.add_argument("--brand", action="store_true", help="also try the brand-list veto")
     ap.add_argument("--think", action="store_true", help="use the reasoning-on answers (qwen_sweep_think.jsonl)")
     a = ap.parse_args()
@@ -136,6 +137,39 @@ def main() -> int:
         br = brand_lines(rows, line_texts(rows))[unseen]
         print(f"brand words flag {br.mean():.1%} of lines; {br[S.y == 1].mean():.1%} of read lines", flush=True)
         checkers = {"qwen": q, "brand": br, "qwen or brand": q | br}
+    if a.selfpromo:
+        # A second small model like the marker, trained on self-promo lines only, out-of-fold with channel
+        # groups inside the 160. Its top 2% of lines count as "self-promo here". Labels: `category`.
+        from sklearn.linear_model import LogisticRegression
+        from sklearn.model_selection import GroupKFold
+        cat = np.load(DATA / "features.npz", allow_pickle=True)
+        pooled_cat = {}
+        for _, feats in __import__("qwen_sweep").SETS:
+            f = np.load(DATA / feats, allow_pickle=True)
+            if "category" in f.files:
+                for vv, ll, cc in zip(f["video"], f["line"], f["category"]):
+                    pooled_cat[(str(vv), int(ll))] = str(cc)
+        X = S.X[:, :395]
+        X = (X - X.mean(0)) / (X.std(0) + 1e-6)
+        ysp = np.zeros(len(X), dtype=int)
+        for v, r in {str(v): np.flatnonzero(S.video == v) for v in np.unique(S.video)}.items():
+            d_line = None
+            for _, feats in __import__("qwen_sweep").SETS:
+                f = np.load(DATA / feats, allow_pickle=True)
+                m = f["video"] == v
+                if m.any():
+                    d_line = f["line"][m]
+                    break
+            ysp[r] = [pooled_cat.get((v, int(l)), "") == "selfpromo" for l in d_line]
+        sp = np.zeros(len(X))
+        for tr, te in GroupKFold(5).split(X, ysp, S.channel):
+            m = LogisticRegression(C=0.1, class_weight="balanced", max_iter=2000).fit(X[tr], ysp[tr])
+            sp[te] = m.predict_proba(X[te])[:, 1]
+        from sklearn.metrics import average_precision_score
+        print(f"self-promo model: {ysp.sum()} self-promo lines, out-of-fold average precision "
+              f"{average_precision_score(ysp, sp):.3f} (chance {ysp.mean():.3f})", flush=True)
+        spf = sp >= np.quantile(sp, 0.98)
+        checkers = {"qwen": q, "self-promo model": spf, "qwen or self-promo model": q | spf}
     heads = ((p_start + fs) / 2)[unseen], ((p_end + fe) / 2)[unseen]
     local = {str(v): np.flatnonzero(S.video == v) for v in np.unique(S.video)}
     for seed in (0, 1, 2):
