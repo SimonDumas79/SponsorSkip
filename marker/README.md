@@ -1102,3 +1102,11 @@ points for +4.9 s). As a veto on v3's loose extras (`category_detector.py --ft`)
 labels 65.7 / 67.6 / 68.3% vs 64.6 / 66.3 / 67.0% (+1.1 to +1.3, +1.3 to +2.2 s); Claude any-promo labels
 57.4 / 60.0 / 60.6% vs 57.5 / 60.9 / 57.5% (inconsistent). A veto cannot reach reads v3 never touches,
 which is where own-product reads are. Proposed to Simon: a separate opt-in self-promo path graded on its own.
+
+**The fine-tuned Claude-category detector as an eighth stack input** (Simon's question, 2026-09-24,
+`target_misses.py --variants claudeft [--claude-target]`). A, stack learns SponsorBlock labels: B = 10
+63.0 / 61.2 / 55.7% against v3's 64.6 / 66.3 / 67.0%, worse on every seed. B, stack learns and is graded on
+Claude's any-promo labels, against v3's inputs retrained on the same target: B = 5 47.4 / 47.0 / 46.1% vs
+40.9 / 41.7 / 43.7% (+2.4 to +6.5), B = 10 52.1 / 48.0 / 59.1% vs 57.7 / 61.5 / 59.3% (worse). Inconsistent;
+not adopted. Retargeting alone (v3 inputs on Claude's labels, 57.7-61.5%) matches v3 as built on those
+labels (57.5-60.9%). Every way of attaching the detector to v3 (veto, union, input) has now failed.

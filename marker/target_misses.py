@@ -66,6 +66,9 @@ def island_streams(S, widths=(8, 16, 32), side=12) -> list[np.ndarray]:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--variants", nargs="+", default=["translated"])
+    ap.add_argument("--claude-target", action="store_true",
+                    help="variant B: the stack learns Claude's any-promo labels, and is graded on them; the baseline is "
+                         "v3's inputs retrained on the same target")
     a = ap.parse_args()
     rows, _, _ = pooled()
     level1, _, p_start, p_end = np.load(DATA / "pooled_oof.npy")
@@ -92,16 +95,27 @@ def main() -> int:
         added["qwen"] = context_features(S, (q.astype(np.float32) * 0.98 + 0.01)[unseen])
     if "island" in a.variants:
         added["island"] = np.column_stack([context_features(S, x) for x in island_streams(S)])
+    if "claudeft" in a.variants:
+        # The fine-tuned detector on Claude's non-sponsor promo reads (finetune_minilm.py --target
+        # claude-nonsponsor, out-of-fold over the 205) as an eighth stack input. (Simon, 2026-09-24.)
+        added["claudeft"] = context_features(S, np.load(DATA / "finetune_oof_bge_claude_nonsponsor_seed0.npy")[unseen])
+    if a.claude_target:
+        from category_detector import claude_targets
+        S = Rows(S.X, claude_targets(rows)["any promo"][unseen], S.video, S.channel, S.start_seconds, S.split,
+                 S.feature_names)
+        print("variant B: target and grade are Claude's any-promo labels")
     print(f"{S.videos} videos, {S.reads} reads\n")
     for seed in (0, 1, 2):
         bge = np.load(DATA / f"finetune_oof_bge_seed{seed}.npy")
         streams = [level1, bake["meaning"], bake["structure"], bake["potion"], np.load(DATA / "sequence_oof_h32_r7.npy"), bge]
         F = [context_features(S, x[unseen]) for x in streams] + [context_features(S, sb[unseen])]
-        v3 = np.load(DATA / f"stack_sbml_oof_s{seed}.npy")[1]   # v3 as built, not recomputed
-        runs = [("v3 as built", v3)]
+        if a.claude_target:
+            runs = [("v3 inputs, Claude target", oof_seeded(S, np.column_stack(F + [extra]), 0))]
+        else:
+            runs = [("v3 as built", np.load(DATA / f"stack_sbml_oof_s{seed}.npy")[1])]   # not recomputed
         for name in a.variants:
             runs.append((f"v3 + {name}", oof_seeded(S, np.column_stack(F + [extra, added[name]]), 0)))
-            np.save(DATA / f"target_{name}_oof_s{seed}.npy", runs[-1][1])
+            np.save(DATA / f"target_{name}{'_B' if a.claude_target else ''}_oof_s{seed}.npy", runs[-1][1])
         for name, sc in runs:
             g = graded(sweep_fine(sc, S, *heads), S)
             for b in (5, 10):
