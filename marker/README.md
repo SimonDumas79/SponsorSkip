@@ -1066,3 +1066,19 @@ veto on v3's loose extras (its top 2% of lines): 66.3 / 67.4% at B = 10 (seeds 0
 most likely the loose threshold itself letting a few more real finds through, not self-promo detection.
 32 reads (a third doubtful) are too few; more self-promo examples would have to come first (the
 channel set has 18 more, but it is reserved as a test set).
+
+### Claude's category labels: v3 skips sponsor reads, not the rest (2026-09-24, `claude_label.py --categories`, `category_audit.py`)
+
+Simon: split the data by kind of promotion, because the creator's own product "could go either way
+depending on the style of read", and SponsorBlock's selfpromo lumps "subscribe / support us" in with real
+pitches. Claude Haiku labelled every window of all 205 pooled videos (164 min, 0 failed windows) into
+sponsor / own_product / channel_plug / other_promo, each a "read" (the show stops for a pitch) or a
+"mention". Totals: sponsor read 249 segments (13,538 s), channel_plug read 104 (1,702 s) and mention 93,
+own_product read 48 (1,602 s) and mention 30, other_promo mention 35 and read 24, sponsor mention 13.
+In a 10-video pilot, 4 of SponsorBlock's 5 selfpromo marks were channel plugs.
+
+v3 (seed 0, B = 10, out-of-fold) against these labels on the 160: **sponsor reads 75.5% of lines skipped**
+(28.7% of segments never touched); **own_product reads 20.8%** (73.2% never touched); other_promo reads
+32.8%; channel_plug reads 11.5% (88.0% never touched); every "mention" under 16%. The own-product read is
+the gap Simon pointed at: long enough to matter (1,602 s over 48 reads, ~33 s each) and almost unseen.
+Simon (09-24): end-of-video plugs count as ad time, so channel_plug reads are in scope too.
