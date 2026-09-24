@@ -1206,3 +1206,12 @@ Cost: it reads every line (v3's gate would hide exactly these reads), about 30 s
 at the program's 2 threads. First live finds: an end-of-video "like and subscribe" (in scope, per Simon) and
 a 5 s false positive on a Patreon mention inside the topic. Its fresh grade is holdout 6, once; not yet in the
 models release.
+
+### Level 4's end cap, checked on holdout 4 (2026-09-24, `level4_cap.py`, $4.27 of plan usage)
+The served whole-transcript reader (`level4_eval.mjs`, now recording Claude's raw answers and quotes) on all
+64 holdout-4 videos, 0 failed: **84.3% of ad time, 10.7 s of show lost per video, 3.1% of videos over 60 s**,
+reads fully covered 57% / partly 31% / missed 12% (v3 on the same videos: 66.2% at 5.0 s). Only one segment
+ran past 150 s (154 s); holdout 5's runaway ends (up to 575 s) did not recur. So no cap changes anything at
+180 or 240 s, flat or "only when the resume quote was not found"; at 120 s both cost 1.2-1.3 points of ad
+time for 0.1 s. The worst video (117 s lost) is a false find, not a long end. Verdict: a cap is at most a
+safety net; the unconfirmed-180 s rule is the one that cannot hurt a real read here. Holdout 6 decides.
