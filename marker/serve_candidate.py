@@ -98,7 +98,9 @@ class Candidate:
             ck = torch.load(self.bundle_dir / self.fine_tuned[which], weights_only=False)
             OPT.update(ck["opt"])
             model = Scorer()
-            model.load_state_dict(ck["state"])
+            # The shipped checkpoints store fp16 weights to halve the download; compute stays fp32
+            # (compress_parity.py: identical regions on every holdout-4 video).
+            model.load_state_dict({k: v.float() if v.is_floating_point() else v for k, v in ck["state"].items()})
             self._bge[which] = (model.eval(), AutoTokenizer.from_pretrained(OPT["model"]))
         model, tok = self._bge[which]
 
