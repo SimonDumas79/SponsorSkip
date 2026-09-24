@@ -4,6 +4,8 @@ SponsorSkip is a mix of multiple small, directed models used to mark and skip sp
 
 It is a Chrome and Firefox extension plus a small program on your own PC. **By default the free marker reads each video's transcript** (level 1: seven small models, CPU only, no language model, nothing leaves your PC). Every level above it is opt-in, because those are the ones that cost you something: your GPU's time, or your Claude plan through Claude Code (no API key). It doesn't rely on crowd-sourced timestamps. The program listens on `127.0.0.1` only.
 
+The level-1 model files (about 200 MB, CC BY-NC-SA 4.0) are not in the repository: the program downloads them from the GitHub release named in `models.json` the first time it starts, and checks them against its sha256 (`server/models.mjs`).
+
 **Setting it up with an AI agent:** point your agent (Claude Code or similar) at `SETUP_WITH_AN_AI_AGENT.md`. Licence: GPL-3.0 for the code, CC BY-NC-SA 4.0 for the models (`NOTICE.md`). Privacy: `PRIVACY.md`.
 
 ## How it works

@@ -12,7 +12,8 @@
  * Results are cached per video in ./cache, so a rewatch costs nothing, and
  * every reading and every failure is appended to ./backend.log.
  *
- *   GET /health             which agents can run right now
+ *   GET /health             which agents can run right now, and whether the
+ *                           level-1 model files are in (models.mjs)
  *   GET /quick/:videoId     instant: the cached result, else SponsorBlock's
  *                           community segments (hash-prefix lookup), marked
  *                           interim, so an early sponsor read is covered
@@ -32,6 +33,7 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { AGENTS, claudeAvailable, localBlocker, readClaude, readLocal, readMarker } from "./agents.mjs";
+import { ensureModels, modelStatus } from "./models.mjs";
 import { mergeOverlaps, parseSegments, snapStarts } from "./segments.mjs";
 import { getTranscript } from "./youtube.mjs";
 
@@ -303,6 +305,7 @@ const server = http.createServer(async (req, res) => {
           { name: AGENTS.local, ready: !blocker, note: blocker ?? "ready" },
           { name: AGENTS.claude, ready: claude, note: claude ? "ready" : "Claude Code CLI not found (install it and log in)" },
         ],
+        models: modelStatus(),
       });
     }
     const m = /^\/(quick|analyze|progress)\/([\w-]+)$/.exec(url.pathname);
@@ -336,4 +339,7 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, "127.0.0.1", () => console.log(`SponsorSkip backend on http://127.0.0.1:${PORT} (readers: ${AGENTS.claude}; ${AGENTS.local})`));
+server.listen(PORT, "127.0.0.1", () => {
+  console.log(`SponsorSkip backend on http://127.0.0.1:${PORT} (readers: ${AGENTS.claude}; ${AGENTS.local})`);
+  ensureModels(root, log);
+});

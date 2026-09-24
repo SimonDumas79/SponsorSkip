@@ -79,10 +79,12 @@ python -m pip install --user numpy torch transformers sentence-transformers mode
 ```
 
 A CPU-only PyTorch is enough; the marker never uses the GPU. **The model files are not in the
-repository** (about 400 MB). They go in `marker/data/production/` (`candidate.pt` plus the `models/`
-folder). Until they are published as a release download, level 1 (the default) cannot run from a fresh copy: the
-program falls back to SponsorBlock's community segments, and only level 4 actually reads the video. Tell the
-person this plainly rather than pretending level 1 is set up.
+repository.** The program downloads them itself the first time it starts (about 200 MB, from the GitHub
+release named in `models.json`, checked against its sha256, unpacked into `marker/data/production/`).
+Tell the person it is a one-time download of that size before you start the program. Until it finishes,
+level 1 falls back to SponsorBlock's community segments. `GET http://127.0.0.1:4790/health` shows
+`models.state`: `downloading`, `ready`, or `failed` with the reason (a failed download is retried at the
+next start). The files are CC BY-NC-SA 4.0 (`NOTICE.md`).
 
 ### 5. Start the program
 
