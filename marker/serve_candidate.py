@@ -121,12 +121,14 @@ class Candidate:
         if which not in self._bge:
             ck = torch.load(self.bundle_dir / self.fine_tuned[which], weights_only=False)
             OPT.update(ck["opt"])
+            opts = dict(ck["opt"])
             model = Scorer()
             # The shipped checkpoints store fp16 weights to halve the download; compute stays fp32
             # (compress_parity.py: identical regions on every holdout-4 video).
             model.load_state_dict({k: v.float() if v.is_floating_point() else v for k, v in ck["state"].items()})
-            self._bge[which] = (model.eval(), AutoTokenizer.from_pretrained(OPT["model"]))
-        model, tok = self._bge[which]
+            self._bge[which] = (model.eval(), AutoTokenizer.from_pretrained(OPT["model"]), opts)
+        model, tok, opts = self._bge[which]
+        OPT.update(opts)   # OPT is module-wide; set it to THIS model's window and token limit before scoring
 
         class _R:
             def __init__(self, v):
@@ -213,6 +215,15 @@ class CandidateTier(Candidate):
         # None keeps our own edge heads; "haiku"/"sonnet" asks Claude; "local" asks the GPU model.
         self.edges_with = edges_with
         self._encoders = {}
+        # The self-promotion path (selfpromo_path.py), when its model is in the bundle: its own detector
+        # and rule, beside v3, labelled "selfpromo" so the extension's switch decides whether to skip.
+        sp = self.bundle_dir / "models" / "selfpromo.pt"
+        rule = self.bundle_dir / "models" / "selfpromo_rule.json"
+        self.selfpromo_rule = None
+        if sp.exists() and rule.exists():
+            import json
+            self.fine_tuned = {**self.fine_tuned, "selfpromo": "models/selfpromo.pt"}
+            self.selfpromo_rule = json.loads(rule.read_text(encoding="utf-8"))
 
     def _encoder(self, kind: str):
         if kind not in self._encoders:
@@ -249,6 +260,7 @@ class CandidateTier(Candidate):
         from edge_heads import place
         from replay import regions_by_video
         rows, pot, texts = self.rows_for(caps)
+        self._texts = texts   # the self-promotion path reads the same lines (segments)
         # Layer 1 sweeps, layer 2 reads only where it saw something. Measured on holdout 4: a fifth
         # of the lines costs 0.1 of a point of ad time and does a fifth of the expensive work.
         cheap = self.cheap_streams(rows, pot)
@@ -356,12 +368,29 @@ class CandidateTier(Candidate):
             return None
         return int(wlo), a.get("start_line"), a.get("end_line")
 
+    def selfpromo_spans(self, rows, texts: list[str], sponsor: list[tuple[int, int]]) -> list[tuple[int, int]]:
+        """The self-promotion path: its detector over EVERY line (v3's gate would hide the reads it is
+        for), its own rule, and nothing that overlaps a sponsor region (sponsor wins)."""
+        if not self.selfpromo_rule:
+            return []
+        from selfpromo_path import regions as promo_regions, seconds_per_line
+        r = self.selfpromo_rule
+        p = self.ft_stream("selfpromo", texts, rows.video)
+        f = promo_regions(p, seconds_per_line(rows), r["threshold"], r["smooth"], r["bridge"], r["min_seconds"])
+        d = np.diff(np.concatenate(([0], f, [0])))
+        return [(int(a), int(b)) for a, b in zip(np.flatnonzero(d == 1), np.flatnonzero(d == -1))
+                if not any(a < hi and b > lo for lo, hi in sponsor)]
+
     def segments(self, caps: dict) -> list[dict]:
         spans, rows = self.regions(caps)
         starts = rows.start_seconds
         end_of = lambda j: float(starts[j]) if j < len(starts) else float(caps.get("duration") or starts[-1] + 3.0)
-        return [{"start": round(float(starts[a]), 2), "end": round(end_of(b), 2), "category": "sponsor"}
-                for a, b in spans]
+        out = [{"start": round(float(starts[a]), 2), "end": round(end_of(b), 2), "category": "sponsor"} for a, b in spans]
+        if self.selfpromo_rule:
+            promo = self.selfpromo_spans(rows, self._texts, spans)
+            out += [{"start": round(float(starts[a]), 2), "end": round(end_of(b), 2), "category": "selfpromo"} for a, b in promo]
+            out.sort(key=lambda s: s["start"])
+        return out
 
 
 def check(which: str, limit: int, v3: bool = False) -> int:

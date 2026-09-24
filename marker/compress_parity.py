@@ -94,9 +94,9 @@ def main() -> int:
     for how in ("fp32", "fp16", "int8"):
         mb = 0.0
         for k in KINDS:
-            model, tok = originals[k]
+            model, tok, opts = originals[k]
             m = variant(model, how)
-            tier._bge[k] = (m, tok)
+            tier._bge[k] = (m, tok, opts)
             st = m.state_dict()
             if how == "fp16":
                 st = {n: v.half() if v.is_floating_point() else v for n, v in st.items()}

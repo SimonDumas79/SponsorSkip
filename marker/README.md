@@ -1179,3 +1179,30 @@ and compared with the fp32 originals on the same rows.
 **fp16 halves the download with no change in what gets skipped.** int8 saves nothing more (the
 embedding table stays fp32) and changes half the videos' regions, so its +0.9 points is drift, not a
 gain. Not applied to the bundle yet: that is decision 5.
+
+### The self-promotion path: its own detector beside v3 (2026-09-24, `selfpromo_path.py`)
+Simon wanted self-promo detection now. Every way of attaching the self-promo detector to v3 had failed
+(above), so it runs beside v3 instead: the fine-tuned BGE-small trained on Claude's non-sponsor promotion
+reads (own product, channel plugs, other promo) scores every line, a rule of its own marks regions, and
+those are served as `selfpromo`, which the extension's "Skip self-promotion too" switch controls. Anything
+overlapping a sponsor region is dropped (sponsor wins); v3's sponsor answer is unchanged (checked live on
+4 holdout-4 videos).
+
+The rule was picked on the true out-of-fold stream of the 251 videos Claude labelled (channel-grouped folds),
+under a budget on real show lost (flagged seconds where Claude saw no promotion of any kind and SponsorBlock
+has no sponsor). 84 minutes of such reads in 138 of the 251 videos:
+
+| show-lost budget | rule (threshold, smoothing, bridge, min s) | self-promo read time caught | show lost / video | over 60 s | worst |
+|---|---|---|---|---|---|
+| 1 s | 0.80, 5, 2, 10 | 19.0% | 0.9 s | 0% | 57 s |
+| **2 s (shipped)** | **0.95, 1, 0, 5** | **28.6%** | **1.9 s** | **0%** | 58 s |
+| 3 s | 0.55, 1, 0, 5 | 34.8% | 2.9 s | 0.8% | 68 s |
+| 5 s | 0.40, 1, 4, 5 | 40.7% | 4.9 s | 0.8% | 121 s |
+
+For scale, v3 alone skips 11-21% of these reads. Served model: the same recipe trained on all 251 videos
+(`finetune_minilm.py --target claude-nonsponsor --extra-sets features_holdout5.npz --train-only`), stored fp16
+as `production/models/selfpromo.pt` (67 MB) with `selfpromo_rule.json`; without those files the path is off.
+Cost: it reads every line (v3's gate would hide exactly these reads), about 30 s of CPU on a 36-minute video
+at the program's 2 threads. First live finds: an end-of-video "like and subscribe" (in scope, per Simon) and
+a 5 s false positive on a Patreon mention inside the topic. Its fresh grade is holdout 6, once; not yet in the
+models release.

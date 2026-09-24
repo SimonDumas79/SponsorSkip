@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Level 4 exactly as the extension serves it (2026-09-24): server/agents.mjs readClaude on a video's
+ * Level 4 exactly as the extension serves it (2026-09-24): server/agents.mjs readAI (the AI picked in the popup) on a video's
  * stored captions, then the same clean-up server.mjs applies (parse, snap starts to caption lines,
  * merge overlaps). The research labeller (claude_label.py) uses a different prompt and windowing, so
  * its numbers are not the served default's. Writes one JSON line per video; resumable.
@@ -10,7 +10,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { readClaude } from "../server/agents.mjs";
+import { readAI } from "../server/agents.mjs";
 import { mergeOverlaps, parseSegments, snapStarts } from "../server/segments.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -31,9 +31,11 @@ async function one(file) {
   const t0 = Date.now();
   let rec;
   try {
-    const { text, costUsd, parts, failed } = await readClaude(video, root);
-    const segments = mergeOverlaps(snapStarts(parseSegments(text, video.lengthSeconds), video.transcript));
-    rec = { videoID: caps.videoID, segments, costUsd, parts, failed: failed ?? null };
+    const { text, costUsd, parts, failed } = await readAI(video);
+    const raw = parseSegments(text, video.lengthSeconds);
+    const segments = mergeOverlaps(snapStarts(raw, video.transcript));
+    // raw: before snapping, with the quotes, so an end-cap rule can ask whether the resume quote was found.
+    rec = { videoID: caps.videoID, segments, raw, costUsd, parts, failed: failed ?? null };
   } catch (e) {
     rec = { videoID: caps.videoID, segments: null, error: String(e.message).slice(0, 200) };
   }
