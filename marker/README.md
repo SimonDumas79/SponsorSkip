@@ -1204,8 +1204,8 @@ For scale, v3 alone skips 11-21% of these reads. Served model: the same recipe t
 as `production/models/selfpromo.pt` (67 MB) with `selfpromo_rule.json`; without those files the path is off.
 Cost: it reads every line (v3's gate would hide exactly these reads), about 30 s of CPU on a 36-minute video
 at the program's 2 threads. First live finds: an end-of-video "like and subscribe" (in scope, per Simon) and
-a 5 s false positive on a Patreon mention inside the topic. Its fresh grade is holdout 6, once; not yet in the
-models release.
+a 5 s false positive on a Patreon mention inside the topic. Its fresh grade is holdout 6, once. Shipped in the
+`models-v4` release (247 MB with the level-1 models).
 
 ### Level 4's end cap, checked on holdout 4 (2026-09-24, `level4_cap.py`, $4.27 of plan usage)
 The served whole-transcript reader (`level4_eval.mjs`, now recording Claude's raw answers and quotes) on all
