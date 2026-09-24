@@ -1,6 +1,6 @@
 const api = globalThis.browser ?? globalThis.chrome;
 const DEFAULTS = { enabled: true, skipSelfpromo: true, reader: "marker-v3" };
-// Four levels (2026-09-22); level 1 is the default and 2-4 are opt-in (2026-09-24). Settings saved by 0.7.x name readers that are gone; each maps to
+// Four levels (2026-09-22); level 1 is the default and 2-4 are opt-in (2026-09-24); level 2 is hidden from the popup until it is built. Settings saved by 0.7.x name readers that are gone; each maps to
 // the level that replaced it. Level 2 (your GPU checks v3) is not built yet, so marker-qwen lands on 1.
 const READERS = ["marker-v3", "marker-v3-cascade", "claude"];
 const LEGACY_READERS = { marker: "marker-v3", "marker-candidate": "marker-v3", "marker-qwen": "marker-v3",
@@ -83,6 +83,37 @@ for (const r of document.querySelectorAll('input[name="reader"]'))
     readerSetting = e.target.value;
     api.storage.sync.set({ reader: e.target.value });
   });
+
+// Manage AI model: two ways to point SponsorSkip at the person's own AI, by hand or by their agent.
+const AI_PROMPT = `Help me set up the AI reader for SponsorSkip, the YouTube sponsor-skipping extension, on this computer.
+
+1. Read SETUP_WITH_AN_AI_AGENT.md in https://github.com/SimonDumas79/SponsorSkip first and follow its rules.
+2. Check whether SponsorSkip's program is running: GET http://127.0.0.1:4790/health.
+3. If I use Claude: check that Claude Code is installed and tell me which account it is signed in to. Never sign in for me; tell me what to type (/status, /login).
+4. If I use a different AI: explain what SponsorSkip supports today and what adding my model as a reader in server/agents.mjs would take. Ask before changing any code.
+5. Ask before installing anything, and before any test that reads a video with my plan.`;
+$("ai-prompt").value = AI_PROMPT;
+$("ai-toggle").onclick = () => {
+  $("ai").hidden = !$("ai").hidden;
+  $("ai-toggle").textContent = $("ai").hidden ? "Manage AI model" : "Hide";
+};
+const aiTab = (agent) => {
+  $("ai-self").hidden = agent;
+  $("ai-agent").hidden = !agent;
+  $("ai-tab-self").classList.toggle("on", !agent);
+  $("ai-tab-agent").classList.toggle("on", agent);
+};
+$("ai-tab-self").onclick = () => aiTab(false);
+$("ai-tab-agent").onclick = () => aiTab(true);
+$("ai-copy").onclick = async () => {
+  try {
+    await navigator.clipboard.writeText(AI_PROMPT);
+    $("ai-copied").textContent = "Copied";
+  } catch {
+    $("ai-prompt").select(); // clipboard refused: leave it selected for Ctrl+C
+    $("ai-copied").textContent = "Press Ctrl+C";
+  }
+};
 
 async function connection() {
   const h = await api.runtime.sendMessage({ type: "health" });

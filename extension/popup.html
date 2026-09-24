@@ -43,13 +43,34 @@
   </section>
 
   <section class="card">
-    <strong>Reader</strong>
-    <label class="choice"><input type="radio" name="reader" value="marker-v3" /> 1. Free marker on this PC: no language model, skips only what it is sure of <span class="tag">default</span></label>
-    <label class="choice disabled" title="Not built yet"><input type="radio" name="reader" value="marker-v3-check" disabled /> 2. Free marker + your GPU checks each find <span class="tag">coming</span></label>
-    <label class="choice"><input type="radio" name="reader" value="marker-v3-cascade" /> 3. Free marker finds the reads, Claude places each edge</label>
-    <label class="choice"><input type="radio" name="reader" value="claude" /> 4. Claude reads the whole video <span class="tag">most accurate</span></label>
-    <p class="muted small">Level 1 is free. Levels 2-4 are opt-in and cost you something: your GPU or your Claude plan. Levels 1 and 2 never leave this PC. Levels 3 and 4 use Claude Code on your subscription; level 3 sends Claude only the few lines around each find.</p>
+    <div class="row between"><strong>Reader</strong><button id="ai-toggle" class="link">Manage AI model</button></div>
+    <label class="choice"><input type="radio" name="reader" value="marker-v3" /> Free marker on this PC: no language model, skips only what it is sure of <span class="tag">default</span></label>
+    <label class="choice"><input type="radio" name="reader" value="marker-v3-cascade" /> Free marker finds the reads, your AI places each edge</label>
+    <label class="choice"><input type="radio" name="reader" value="claude" /> Your AI reads the whole video <span class="tag">most accurate</span></label>
+    <p class="muted small">The free marker is the default and never leaves this PC. The other two are opt-in and use your own AI plan through Claude Code; "places each edge" sends it only the few lines around each find.</p>
     <label class="choice"><input type="checkbox" id="skipSelfpromo" /> Skip self-promotion too (merch, Patreon, memberships)</label>
+
+    <div id="ai" hidden>
+      <p class="muted small">SponsorSkip reaches your AI through the program on this PC. Today that means Claude, through your own Claude Code sign-in: no API key, nothing billed but your plan.</p>
+      <div class="tabs">
+        <button id="ai-tab-self" class="tab on">Set it up myself</button>
+        <button id="ai-tab-agent" class="tab">Let my AI do it</button>
+      </div>
+      <div id="ai-self">
+        <ol>
+          <li>Install <b>Claude Code</b>, open a terminal and run <code>claude</code>. Sign in with the Claude account whose plan you want SponsorSkip to use.</li>
+          <li>To see which account is signed in, type <code>/status</code> inside <code>claude</code>. To switch accounts, type <code>/login</code> (or <code>/logout</code> to sign out).</li>
+          <li>Optional: pick the Claude model by setting <code>SPONSORSKIP_MODEL</code> (<code>haiku</code>, the default, or <code>sonnet</code>) before starting the program.</li>
+          <li>Restart SponsorSkip: run <code>start-hidden.vbs</code> in the SponsorSkip folder. The line at the top of this popup turns green when it can reach Claude.</li>
+        </ol>
+        <p class="muted small">Using a different AI? SponsorSkip only talks to Claude Code today. Adding another means a new reader next to Claude's in <code>server/agents.mjs</code>; the "Let my AI do it" prompt asks your AI to look into it with you.</p>
+      </div>
+      <div id="ai-agent" hidden>
+        <p class="muted small">Paste this into the AI you use (Claude Code or any agent that can run commands on your computer):</p>
+        <textarea id="ai-prompt" readonly rows="7"></textarea>
+        <div class="row"><button id="ai-copy" class="sb-submit">Copy prompt</button><span id="ai-copied" class="sb-status ok"></span></div>
+      </div>
+    </div>
   </section>
 
   <script src="popup.js"></script>

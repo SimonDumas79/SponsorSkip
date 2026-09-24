@@ -61,3 +61,8 @@ button.link { background: none; border: 0; color: var(--accent); cursor: pointer
 #sb-id-input { flex: 1; font: 12px ui-monospace, Consolas, monospace; padding: 3px 5px; border-radius: 5px; border: 1px solid rgba(127,127,127,.4); background: var(--bg); color: var(--fg); }
 ul#segments .when { white-space: nowrap; }
 .choice.disabled { opacity: 0.5; cursor: default; }
+
+.tabs { display: flex; gap: 4px; margin: 8px 0 2px; }
+.tab { flex: 1; font: inherit; font-size: 12px; padding: 3px 6px; border-radius: 5px; border: 1px solid rgba(127,127,127,.4); background: transparent; color: var(--fg); cursor: pointer; }
+.tab.on { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+#ai-prompt { width: 100%; margin-top: 6px; font: 11.5px ui-monospace, Consolas, monospace; padding: 5px; border-radius: 5px; border: 1px solid rgba(127,127,127,.4); background: var(--bg); color: var(--fg); resize: vertical; }
