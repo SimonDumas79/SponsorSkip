@@ -3,8 +3,8 @@
 Simon asked to compare our scores with the SponsorBlock ML model. That project (GPL-3.0, trained on the
 SponsorBlock database in early 2022; weights on Hugging Face) extracts sponsor text with a T5 model
 (Xenova/sponsorblock-small) and filters each find with a BERT classifier (EColi/SB_Classifier, its
-default). Its own chunking, output parsing and merging code is used unchanged, from a clone kept in
-data/sponsorblock-ml (data/ is never committed, so none of their code enters this repo).
+default). Its own chunking, output parsing and merging code is used unchanged, vendored in
+vendor/sponsorblock_ml/ at upstream commit 7b6d44b (GPL-3.0, like this repo; see its README).
 
 Two differences from their live tool, both forced: the words come from OUR caption files (so both
 systems read the same text), and each caption line's words are spread evenly over the line's time,
@@ -32,7 +32,7 @@ from transformers import AutoModelForSeq2SeqLM, AutoModelForSequenceClassificati
 
 HERE = Path(__file__).parent
 DATA = HERE / "data"
-SRC = DATA / "sponsorblock-ml" / "src"
+SRC = HERE / "vendor" / "sponsorblock_ml" / "src"
 OUT = DATA / "sbml_predictions.jsonl"
 T5, CLASSIFIER = "Xenova/sponsorblock-small", "EColi/SB_Classifier"
 SETS = [("features.npz", "captions"), ("features_tail.npz", "captions_tail"),
