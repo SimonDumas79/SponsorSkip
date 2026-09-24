@@ -1146,3 +1146,21 @@ The hidden layer earns its place (linear loses 6 points at B = 5). Dropout 0.5 w
 
 Verdict: no change to v3. Open for Simon: retrain the shipped stack on 434 videos (about 1 s less show cut,
 ad time flat) and/or dropout 0.5, both to be graded once on holdout 6.
+
+### What a flat 180 s cap would cost level 4 (2026-09-24, zero spend)
+Level 4's runaway ends on holdout 5 (worst 575 s) suggested cutting every served segment at 180 s. Before
+touching the test set, the cost of that rule was measured on the labelled reads it would clip: 558
+SponsorBlock reads in the burned sets (pooled, channels, holdouts 2-4, tail). Median read 66 s, p90 130 s,
+p99 325 s, longest 444 s.
+
+| cap | real reads longer | real ad time a truncation would drop |
+|---|---|---|
+| 150 s | 47 | 7.3% |
+| **180 s** | **23** | **5.0%** |
+| 240 s | 10 | 2.7% |
+| 300 s | 7 | 1.3% |
+
+So a flat 180 s cap is not free: it could take up to ~5 points of ad time back from level 4's 73.2%.
+Smarter variant, not yet testable: cap only when the resume quote did not snap to a caption line (a
+runaway end presumably has none). Testing either needs served-reader answers on a burned set (holdout 4,
+64 videos, roughly $4 of plan usage at holdout 5's rate); served answers exist only for holdout 5.
