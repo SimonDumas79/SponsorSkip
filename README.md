@@ -35,7 +35,7 @@ Submissions use a private SponsorBlock user ID the extension creates once and ke
 **The popup offers four levels** (0.8.0, 2026-09-22). **Level 1 is the default since 0.9.0 (2026-09-24); levels 2-4 are opt-in**, since each costs the user GPU time or Claude usage. A setting nobody chose falls to level 1; a level someone picked is kept.
 
 1. **Free marker** (`?reader=marker-v3`, `predict.py serve --tier v3`): candidate v3, seven detectors including the community SponsorBlock model, CPU only, about 35-60 s a video. v3 on holdout 4: 67.2% of ad time at 5.5 s of show lost per video.
-2. **Free marker + your GPU checks each find**: shown but disabled, not built yet. The design (v3 at a looser threshold, with qwen removing false finds) is not decided yet.
+2. **Free marker + your GPU checks each find**: not built yet, and not shown in the popup since 0.9.1 (which also drops the level numbers from the popup; they stay here and in the code). The design (v3 at a looser threshold, with qwen removing false finds) is not decided yet.
 3. **Free marker finds, Claude places each edge** (`?reader=marker-v3-cascade`, `--tier v3-cascade`): v3's regions, then Claude Haiku gets only the lines around each one and says where it starts and ends. If Claude fails, our edge heads are used. Not yet measured on v3's regions (the cascade's 71.2% / 4.6 s was on v2's).
 4. **Claude reads the whole video** (`claude`): the most accurate, and opt-in. It was the default until 0.9.0.
 

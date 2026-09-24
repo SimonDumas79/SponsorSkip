@@ -21,7 +21,7 @@ SponsorSkip skips sponsor reads and other promotion in YouTube videos. It has tw
 | level | what reads the video | needs | cost |
 |---|---|---|---|
 | 1 | the free marker (seven small models, CPU only) (**the default**) | Python packages + the model files | free |
-| 2 | the free marker + a local GPU model checking it | not offered yet | — |
+| 2 | the free marker + a local GPU model checking it | not built yet; not shown in the popup | — |
 | 3 | the free marker finds, Claude places each read's start and end | level 1 + Claude Code | a little of the person's Claude plan |
 | 4 | Claude reads the whole transcript (opt-in) | Claude Code | more of the person's Claude plan |
 
