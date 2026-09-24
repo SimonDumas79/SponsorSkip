@@ -115,7 +115,9 @@ use it). For levels 3 and 4, the entry marked `"yourAI":true` must say `"ready":
 - **Chrome:** open `chrome://extensions`, turn on **Developer mode** (top right), click **Load unpacked**,
   and choose the `extension` folder inside SponsorSkip.
 - **Firefox:** open `about:debugging#/runtime/this-firefox`, click **Load Temporary Add-on**, and choose
-  `extension/manifest.json`. This lasts until Firefox restarts; a permanent install needs Mozilla signing.
+  `extension/manifest.json`. This lasts until Firefox restarts. For a permanent install without Mozilla
+  signing: Firefox Developer Edition or Nightly, `xpinstall.signatures.required` = `false` in `about:config`, then
+  install a zip of the `extension` folder's contents from `about:addons` → gear → Install Add-on From File.
   If Firefox asks for access to youtube.com and 127.0.0.1, allow both.
 
 Most agents cannot open `chrome://` or `about:` pages, so give the person these clicks rather than trying.

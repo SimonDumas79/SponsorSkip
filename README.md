@@ -1,5 +1,7 @@
 # SponsorSkip
 
+**Do you hate advertisements? Me too!**
+
 SponsorSkip is a mix of multiple small, directed models used to mark and skip sponsored content on YouTube.
 
 It is a Chrome and Firefox extension plus a small program on your own PC. **By default the free marker reads each video's transcript** (level 1: seven small models, CPU only, no language model, nothing leaves your PC). Every level above it is opt-in, because those are the ones that cost you something: your GPU's time, or the plan of whichever AI you pick (Claude Code, Codex, Gemini, Ollama, or an API). It doesn't rely on crowd-sourced timestamps. The program listens on `127.0.0.1` only.
@@ -97,7 +99,7 @@ The extension was tested in Firefox 156 on the first episode: it connected, load
 3. **The program**: double-click `start-hidden.vbs` (no window), or `npm start`. To start it at login, put a shortcut to `start-hidden.vbs` in `shell:startup` (the desktop already has one).
 4. **The extension**:
    - **Chrome**: `chrome://extensions` → turn on **Developer mode** → **Load unpacked** → pick the `extension` folder.
-   - **Firefox**: `about:debugging#/runtime/this-firefox` → **Load Temporary Add-on** → pick `extension/manifest.json`. This lasts until Firefox restarts. A permanent install needs the add-on signed by Mozilla (free, unlisted): `npx web-ext sign --channel=unlisted` with your addons.mozilla.org API keys.
+   - **Firefox**: `about:debugging#/runtime/this-firefox` → **Load Temporary Add-on** → pick `extension/manifest.json`. This lasts until Firefox restarts. For a permanent install without Mozilla signing, use Firefox Developer Edition or Nightly: set `xpinstall.signatures.required` to `false` in `about:config`, zip the `extension` folder's contents, and install the zip from `about:addons` → gear → **Install Add-on From File**. (On regular Firefox a permanent install needs the add-on signed by Mozilla: `npx web-ext sign --channel=unlisted` with addons.mozilla.org API keys.)
    - Firefox may ask to allow the extension on youtube.com and 127.0.0.1. Allow both.
 
 ## Tests
