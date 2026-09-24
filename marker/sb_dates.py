@@ -26,7 +26,8 @@ DATA = HERE / "data"
 OUT = DATA / "sb_dates.json"
 API = "https://sponsor.ajay.app/api/searchSegments"
 UA = "SponsorSkip-research/0.1 (personal, non-commercial)"
-SETS = ("features.npz", "features_tail.npz", "features_holdout2.npz", "features_channels.npz", "features_holdout4.npz")
+SETS = ("features.npz", "features_tail.npz", "features_holdout2.npz", "features_channels.npz", "features_holdout4.npz",
+        "features_holdout3.npz", "features_holdout5.npz")
 
 
 def fetch(video_id: str) -> list:

@@ -30,6 +30,7 @@ Cross-validated only; nothing here reads holdout 3, and nothing ships from here.
 
 import ctypes
 import sys
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -48,13 +49,17 @@ torch.set_num_threads(4)
 
 CACHE = DATA / "bakeoff_streams.npz"
 POTION = ["features_potion_cv.npz", "features_potion_tail.npz", "features_potion_holdout2.npz"]
+# The enlarged pool's potion files, in build_production.ENLARGED_SETS order (2026-09-24).
+POTION_ENLARGED = POTION + ["features_potion_holdout3.npz", "features_potion_channels.npz",
+                           "features_potion_holdout4.npz", "features_potion_holdout5.npz"]
 SHARES = np.geomspace(0.004, 0.25, 36)   # share of all lines flagged, the threshold sweep
 BUDGETS = (5, 10)
 
 
-def potion_rows(rows) -> np.ndarray:
-    """The potion feature files, concatenated in the pooled order and checked line by line against it."""
-    parts = [load(DATA / f) for f in POTION]
+def potion_rows(rows, potion_files: list[str] = POTION) -> np.ndarray:
+    """The potion feature files, concatenated in the pooled order and checked line by line against it.
+    potion_files defaults to the graded 205's files; pass POTION_ENLARGED for the enlarged pool."""
+    parts = [load(DATA / f) for f in potion_files]
     video = np.concatenate([p.video for p in parts])
     assert len(video) == len(rows) and (video == rows.video).all(), "potion rows are not in the pooled order"
     assert (np.concatenate([p.y for p in parts]) == rows.y).all()
@@ -77,30 +82,35 @@ def cv_linear(X: np.ndarray, rows, seed: int = 0, folds: int = 5) -> np.ndarray:
     return oof
 
 
-def level_one(rows) -> dict[str, np.ndarray]:
-    cached = dict(np.load(CACHE)) if CACHE.exists() else {}
+def level_one(rows, cache: Path = CACHE, potion_files: list[str] = POTION, pooled_oof: Path = None,
+             sequence_variants: tuple[str, ...] = ("h32_r7", "h64_r7", "h64_r15"),
+             sequence_suffix: str = "") -> dict[str, np.ndarray]:
+    """cache/potion_files/pooled_oof/sequence_* default to the graded 205 pool's files; pass the
+    enlarged pool's counterparts (2026-09-24) to run the same jobs there without touching these files."""
+    pooled_oof = pooled_oof if pooled_oof is not None else DATA / "pooled_oof.npy"
+    cached = dict(np.load(cache)) if cache.exists() else {}
     names = [str(n) for n in rows.feature_names]
     cue_cols = [i for i, n in enumerate(names) if n.startswith("cue_")]
     streams = {}
-    level1, level2, _, _ = np.load(DATA / "pooled_oof.npy")
+    level1, level2, _, _ = np.load(pooled_oof)
     streams["cues"] = np.where(rows.X[:, cue_cols].sum(1) > 0, 0.95, 0.05).astype(np.float32)
     jobs = {
         "description": lambda: cross_validate(
             dict(BASE, drop=["meaning", "seam", "cues", "position"], use_description=True), rows, seed=0),
         "structure": lambda: cross_validate(dict(BASE, drop=["meaning"]), rows, seed=0),
         "meaning": lambda: cross_validate(dict(BASE, drop=["seam", "cues", "position"]), rows, seed=0),
-        "potion": lambda: cv_linear(potion_rows(rows), rows),
+        "potion": lambda: cv_linear(potion_rows(rows, potion_files), rows),
     }
     for name, job in jobs.items():
         if name not in cached:
             print(f"  scoring {name} out of fold...", flush=True)
             cached[name] = job()
-            np.savez(CACHE, **cached)
+            np.savez(cache, **cached)
         streams[name] = cached[name]
     streams["marker"] = level1
     best, best_cov = None, -1.0
-    for variant in ("h32_r7", "h64_r7", "h64_r15"):   # the saved sequence runs; keep the one the rule likes best
-        s = np.load(DATA / f"sequence_oof_{variant}.npy")
+    for variant in sequence_variants:   # the saved sequence runs; keep the one the rule likes best
+        s = np.load(DATA / f"sequence_oof_{variant}{sequence_suffix}.npy")
         b = choose(sweep(s, rows), rows, 10)
         if b and b[2]["coverage"] > best_cov:
             best, best_cov = (variant, s), b[2]["coverage"]

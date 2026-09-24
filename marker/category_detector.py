@@ -37,9 +37,16 @@ from train import DATA, Rows
 sys.stdout.reconfigure(encoding="utf-8")
 
 
-def claude_targets(rows) -> dict[str, np.ndarray]:
-    labels = {r["videoID"]: r["segments"] for r in
-              json.loads((DATA / "claude_labels_categories.json").read_text(encoding="utf-8"))}
+def claude_targets(rows, extra_label_files: list[str] = ()) -> dict[str, np.ndarray]:
+    """extra_label_files: more claude_label.py --categories outputs to merge in (e.g.
+    ["claude_labels_categories_holdout5.json"]), for videos beyond the original 205 pooled ones.
+    Videos with no entry in any of these files get an all-zero (implicit-negative) target, so callers
+    must restrict training to videos actually covered (2026-09-24, enlarging the stack's training pool)."""
+    labels = {}
+    for fname in ("claude_labels_categories.json", *extra_label_files):
+        path = DATA / fname
+        if path.exists():
+            labels.update({r["videoID"]: r["segments"] for r in json.loads(path.read_text(encoding="utf-8"))})
     out = {k: np.zeros(len(rows.y), dtype=np.int8) for k in ("own+other", "non-sponsor", "any promo")}
     for v in np.unique(rows.video):
         r = np.flatnonzero(rows.video == v)

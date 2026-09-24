@@ -18,12 +18,14 @@ so nothing from here ships without a fresh test.
 """
 
 import argparse
+import ctypes
+import sys
 
 import numpy as np
 import torch
 from torch import nn
 
-from build_production import OVER_CAP_SHARE, over_cap, pooled
+from build_production import OVER_CAP_SHARE, SETS, over_cap, pooled
 from edge_heads import place
 from replay import HEADER, grade_regions, regions_by_video, row
 from train import DATA, scaling
@@ -82,25 +84,46 @@ def train_and_score(rows, train_mask, test_mask, hidden, reach, epochs, seed=0, 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--epochs", type=int, default=12)
+    ap.add_argument("--extra-sets", nargs="*", default=[],
+                    help="extra features .npz files pooled in beyond the graded 205 (2026-09-24, enlarging the "
+                         "stack's training pool); output files then get a _enlarged suffix so the plain "
+                         "sequence_oof_h*_r*.npy files other scripts read stay untouched")
+    ap.add_argument("--variants", nargs="*", default=["32,7", "64,7", "64,15"],
+                    help="hidden,reach pairs to train; the recipe of record other scripts load is 32,7")
     args = ap.parse_args()
+    if sys.platform == "win32":   # Simon may be at this PC: stay out of the way
+        ctypes.windll.kernel32.SetPriorityClass(ctypes.windll.kernel32.GetCurrentProcess(), 0x4000)
     torch.set_num_threads(6)
 
-    rows, _, _ = pooled()
-    level1, level2, p_start, p_end = np.load(DATA / "pooled_oof.npy")   # build_production.py's out-of-fold scores
+    pool_sets = (SETS + list(args.extra_sets)) if args.extra_sets else None
+    suffix = "_enlarged" if args.extra_sets else ""
+    rows, _, _ = pooled(pool_sets)
     channels = np.array(sorted(set(rows.channel)))
     np.random.default_rng(0).shuffle(channels)   # the same folds as cross_validate(seed=0)
     folds = np.array_split(channels, 5)
 
-    candidates = {"free tier (marker + context model)": level2}
-    for hidden, reach in ((32, 7), (64, 7), (64, 15)):
+    candidates = {}
+    oof_cache = DATA / "pooled_oof.npy" if not suffix else DATA / "pooled_oof_enlarged.npy"
+    if oof_cache.exists():
+        level1, level2, p_start, p_end = np.load(oof_cache)
+        candidates["free tier (marker + context model)"] = level2
+    else:
+        level2 = p_start = p_end = None
+        print(f"  {oof_cache.name} not built yet: skipping the free-tier comparison row", flush=True)
+    for pair in args.variants:
+        hidden, reach = (int(x) for x in pair.split(","))
         oof = np.zeros(len(rows), dtype=np.float32)
         for fold in folds:
             test = np.isin(rows.channel, fold)
             oof += train_and_score(rows, ~test, test, hidden, reach, args.epochs) * test
         candidates[f"sequence model h{hidden} reach {reach}"] = oof
-        np.save(DATA / f"sequence_oof_h{hidden}_r{reach}.npy", oof)
+        np.save(DATA / f"sequence_oof_h{hidden}_r{reach}{suffix}.npy", oof)
         print(f"trained sequence model h{hidden} reach {reach}", flush=True)
 
+    if p_start is None:
+        print(f"\n{rows.videos} videos, {rows.reads} reads pooled; no pooled_oof to place edges with, so "
+              "the recall/ad-time table below is skipped (the .npy files above are still saved)")
+        return 0
     print(f"\npooled cross-validation, {rows.videos} videos, {rows.reads} reads; edges from the start/resume heads;")
     print(f"rule: most ad time with <= B s lost per video and <= {OVER_CAP_SHARE:.0%} of videos over 60 s")
     print(HEADER)

@@ -46,7 +46,7 @@ torch.set_num_threads(8)
 POTION = {"features.npz": "features_potion_cv.npz", "features_tail.npz": "features_potion_tail.npz",
           "features_holdout2.npz": "features_potion_holdout2.npz", "features_channels.npz": "features_potion_channels.npz",
           "features_holdout4.npz": "features_potion_holdout4.npz", "features_negatives.npz": "features_potion_negatives.npz",
-          "features_holdout5.npz": "features_potion_holdout5.npz"}
+          "features_holdout5.npz": "features_potion_holdout5.npz", "features_holdout3.npz": "features_potion_holdout3.npz"}
 PROMO_TITLE = re.compile(r"\b(sponsor\w*|ad|ads|advert\w*|promo\w*|brought to you|partner\w*|thanks to|merch|patreon)\b", re.I)
 SEQ = dict(hidden=32, reach=7, epochs=12)
 

@@ -60,14 +60,18 @@ def context_features(rows, scores: np.ndarray) -> np.ndarray:
     return out
 
 
-def fit_stage2(F: np.ndarray, y: np.ndarray, hidden: int, seed: int = 0, epochs: int = 15) -> tuple:
+def fit_stage2(F: np.ndarray, y: np.ndarray, hidden: int, seed: int = 0, epochs: int = 15,
+              weight_decay: float = 0.01, dropout: float = 0.2) -> tuple:
+    """weight_decay/dropout default to the recipe of record; a caller can strengthen either
+    (2026-09-24, the enlarged pool's simpler/more-regularised stacking-step check) without changing
+    anything for the many callers that just pass hidden."""
     mean, std = F.mean(0), F.std(0) + 1e-6
     torch.manual_seed(seed)
     Xt, yt = torch.from_numpy((F - mean) / std).float(), torch.from_numpy(y).float()
     model = nn.Linear(F.shape[1], 1) if hidden == 0 else nn.Sequential(
-        nn.Linear(F.shape[1], hidden), nn.ReLU(), nn.Dropout(0.2), nn.Linear(hidden, 1))
+        nn.Linear(F.shape[1], hidden), nn.ReLU(), nn.Dropout(dropout), nn.Linear(hidden, 1))
     loss_fn = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([(len(yt) - yt.sum()) / yt.sum()]))
-    opt = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=0.01)
+    opt = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=weight_decay)
     for _ in range(epochs):
         model.train()
         order = torch.randperm(len(Xt))

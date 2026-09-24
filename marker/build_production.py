@@ -34,19 +34,28 @@ from replay import HEADER, grade_regions, regions_by_video, row
 from train import DATA, FEATURES, Rows, load
 
 SETS = ["features.npz", "features_tail.npz", "features_holdout2.npz"]
+# The enlarged stack-training pool (2026-09-24): every set below has already been graded or used as a
+# tripwire (PREREGISTRATION.md results 1-4), so none of them is a live holdout any more. Verified
+# channel-disjoint from SETS and from each other (326 channels, 494 videos, 0 shared channels).
+ENLARGED_SETS = SETS + ["features_holdout3.npz", "features_channels.npz", "features_holdout4.npz",
+                        "features_holdout5.npz"]
 POOLED = BUNDLE.parent / "free_tier_pooled.pt"
 WORST_CAP = 60.0
 OVER_CAP_SHARE = 0.02   # at most this share of videos may lose more than WORST_CAP seconds
 
 
-def pooled() -> tuple[Rows, np.ndarray, np.ndarray]:
-    parts = [load(DATA / f) for f in SETS]
-    raw = [np.load(DATA / f) for f in SETS]
+def pooled(sets: list[str] | None = None) -> tuple[Rows, np.ndarray, np.ndarray]:
+    """sets defaults to SETS (the graded 205-video pool); pass a longer list to pool more sets
+    the same way (2026-09-24, enlarging the stack's training pool: every extra set here must
+    already be graded/used, never a live holdout)."""
+    sets = sets if sets is not None else SETS
+    parts = [load(DATA / f) for f in sets]
+    raw = [np.load(DATA / f) for f in sets]
     for i in range(len(parts)):
         for j in range(i + 1, len(parts)):
             shared = set(parts[i].channel) & set(parts[j].channel)
             if shared:
-                raise SystemExit(f"{SETS[i]} and {SETS[j]} share channels: {sorted(shared)[:5]}")
+                raise SystemExit(f"{sets[i]} and {sets[j]} share channels: {sorted(shared)[:5]}")
     cat = lambda name: np.concatenate([getattr(p, name) for p in parts])
     rows = Rows(cat("X"), cat("y"), cat("video"), cat("channel"), cat("start_seconds"), cat("split"),
                 parts[0].feature_names)

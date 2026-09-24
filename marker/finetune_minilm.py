@@ -37,7 +37,7 @@ import torch
 from torch import nn
 from transformers import AutoModel, AutoTokenizer
 
-from build_production import pooled
+from build_production import ENLARGED_SETS, SETS as POOLED_SETS, pooled
 from features import MODEL_NAME
 from train import DATA
 
@@ -46,6 +46,11 @@ MAX_TOKENS = 192
 EPOCHS, BATCH, LR_ENCODER, LR_HEAD, WARMUP = 2, 64, 3e-5, 1e-3, 0.06
 SETS = [("examples.jsonl", "features.npz"), ("examples_tail.jsonl", "features_tail.npz"),
         ("examples_holdout2.jsonl", "features_holdout2.npz")]
+
+
+def examples_name(features_file: str) -> str:
+    """The examples .jsonl a features .npz was built from, by build_production.py's naming convention."""
+    return features_file.replace("features", "examples").replace(".npz", ".jsonl")
 
 
 def game_running() -> str | None:
@@ -63,10 +68,14 @@ def game_running() -> str | None:
     return None
 
 
-def line_texts(rows) -> list[str]:
-    """Every pooled row's caption text, in the pooled order (checked against it)."""
+def line_texts(rows, feature_files: list[str] | None = None) -> list[str]:
+    """Every pooled row's caption text, in the pooled order (checked against it).
+
+    feature_files defaults to the graded 205-video SETS; pass ENLARGED_SETS (or another list of
+    features .npz names) to read the matching examples .jsonl files instead, e.g. for --enlarge."""
+    sets = [(examples_name(f), f) for f in feature_files] if feature_files is not None else SETS
     out, videos = [], []
-    for examples, features in SETS:
+    for examples, features in sets:
         text = {}
         with (DATA / examples).open(encoding="utf-8") as f:
             for line in f:
@@ -256,6 +265,11 @@ def main() -> int:
     ap.add_argument("--score", nargs=2, metavar=("EXAMPLES", "FEATURES"),
                     help="instead of cross-validating: train on ALL pooled videos and score a fresh set, given its "
                          "examples .jsonl and feature .npz (for the row order); writes data/finetune_full_<tag>_seed<s>__<set>.npy")
+    ap.add_argument("--extra-sets", nargs="*", default=[],
+                    help="extra features .npz files pooled in beyond the graded 205 (build_production.SETS), e.g. "
+                         "--extra-sets features_holdout3.npz features_channels.npz features_holdout4.npz "
+                         "features_holdout5.npz for the enlarged stack-training pool (2026-09-24); the plain 205 "
+                         "stays the default so nothing else that reads finetune_oof_seed<seed>.npy changes")
     args = ap.parse_args()
     OPT.update(model=args.model, epochs=args.epochs, window=args.window, llrd=args.llrd, reinit=args.reinit,
                rdrop=args.rdrop, max_tokens=args.max_tokens)
@@ -263,15 +277,17 @@ def main() -> int:
         ctypes.windll.kernel32.SetPriorityClass(ctypes.windll.kernel32.GetCurrentProcess(), 0x4000)
     torch.set_num_threads(4)
     device = "cuda"
-    rows, is_start, is_resume = pooled()
-    data = pairs(rows, line_texts(rows))
+    pool_sets = (POOLED_SETS + list(args.extra_sets)) if args.extra_sets else None
+    rows, is_start, is_resume = pooled(pool_sets)
+    data = pairs(rows, line_texts(rows, pool_sets))
     if args.target == "inside":
         y = rows.y.astype(np.float32)
     elif args.target.startswith("claude-"):
         # Claude's category labels (claude_label.py --categories, 2026-09-24): every non-sponsor promotional
         # READ (own product, other promo, channel plug), or every promotional segment of any kind.
         from category_detector import claude_targets
-        y = claude_targets(rows)["non-sponsor" if args.target == "claude-nonsponsor" else "any promo"].astype(np.float32)
+        y = claude_targets(rows, extra_label_files=["claude_labels_categories_holdout5.json"])[
+            "non-sponsor" if args.target == "claude-nonsponsor" else "any promo"].astype(np.float32)
     else:
         from edge_heads import soft
         y = soft(is_start if args.target == "start" else is_resume, rows.video).astype(np.float32)

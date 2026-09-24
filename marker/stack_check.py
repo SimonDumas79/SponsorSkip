@@ -38,14 +38,18 @@ SHARES = np.geomspace(0.004, 0.25, 90)
 SEEDS = (0, 1, 2)
 
 
-def oof_seeded(rows, F: np.ndarray, seed: int, folds: int = 5) -> np.ndarray:
-    """context_stack.out_of_fold with the model's random start as a parameter; the folds stay seed 0."""
+def oof_seeded(rows, F: np.ndarray, seed: int, folds: int = 5, hidden: int = 32, **stage2_kwargs) -> np.ndarray:
+    """context_stack.out_of_fold with the model's random start as a parameter; the folds stay seed 0.
+    hidden and stage2_kwargs (weight_decay, dropout, epochs) default to the recipe of record, so every
+    existing call (hidden=32, nothing else) is unchanged; 2026-09-24 adds them for the simpler/more
+    regularised stacking-step check on the enlarged pool."""
     channels = np.array(sorted(set(rows.channel)))
     np.random.default_rng(0).shuffle(channels)
     p = np.zeros(len(rows), dtype=np.float32)
     for fold in np.array_split(channels, folds):
         test = np.isin(rows.channel, fold)
-        p[test] = fit_stage2(F[~test], rows.y[~test].astype(np.float32), hidden=32, seed=seed)(F[test])
+        p[test] = fit_stage2(F[~test], rows.y[~test].astype(np.float32), hidden=hidden, seed=seed,
+                             **stage2_kwargs)(F[test])
     return p
 
 
