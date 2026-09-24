@@ -278,8 +278,8 @@ async function readWithAgents(id, video, reader) {
 
 // Browser extensions only. Firefox treats an extension's host permissions as
 // opt-in, so its requests can arrive as ordinary cross-origin fetches; this
-// answers them. Web pages get no CORS header, so no site can make the backend
-// spend Claude usage (a page can't forge its Origin).
+// answers them. CORS alone would only hide responses from web pages, not stop
+// the work: that is the x-sponsorskip header's job (see the request handler).
 const EXTENSION_ORIGIN = /^(chrome-extension|moz-extension|extension):\/\/[\w-]+$/;
 function send(res, status, body, type = "application/json") {
   const headers = { "content-type": type, "cache-control": "no-store" };
@@ -341,12 +341,17 @@ const server = http.createServer(async (req, res) => {
   res.origin = req.headers.origin ?? null;
   try {
     if (req.method === "OPTIONS") {
-      // Firefox preflights the popup's JSON POSTs. Answered for extension origins only.
+      // Firefox preflights the extension's requests. Answered for extension origins only.
       if (!(res.origin && EXTENSION_ORIGIN.test(res.origin))) return send(res, 403, { error: "forbidden" });
       res.writeHead(204, { "access-control-allow-origin": res.origin, "access-control-allow-methods": "GET, POST",
-                           "access-control-allow-headers": "content-type", vary: "Origin" });
+                           "access-control-allow-headers": "content-type, x-sponsorskip", vary: "Origin" });
       return res.end();
     }
+    // Every route below can start work (a reading on the person's AI plan, a process spawn), so every
+    // request must carry the x-sponsorskip header. A web page cannot add a custom header without a
+    // preflight, which is refused above, and an <img> or a no-cors fetch cannot add one at all. Only
+    // the Python marker's /ai-ask is exempt: it has its own per-start token.
+    if (req.headers["x-sponsorskip"] !== "1" && url.pathname !== "/ai-ask") return send(res, 403, { error: "forbidden" });
     if (req.method === "POST") return await post(req, res, url);
     if (req.method !== "GET") return send(res, 405, { error: "GET or POST only" });
     if (url.pathname === "/health") {

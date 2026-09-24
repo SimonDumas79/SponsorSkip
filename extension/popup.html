@@ -63,7 +63,7 @@
         </select>
       </label>
       <label class="field" id="ai-model-row">Model <input id="ai-model" placeholder="" /></label>
-      <label class="field" id="ai-command-row" hidden>Command <input id="ai-command" placeholder="reads the prompt on stdin, prints the answer" /></label>
+      <p class="muted small" id="ai-command-row" hidden>For safety, a custom command can only be set by editing <code>ai-config.json</code> in the SponsorSkip folder (<code>"command": "..."</code>): it must read the prompt on stdin and print the answer. Current: <code id="ai-command"></code></p>
       <label class="field" id="ai-url-row" hidden>API base URL <input id="ai-url" placeholder="https://api.openai.com/v1" /></label>
       <label class="field" id="ai-key-row" hidden>API key <input id="ai-key" type="password" placeholder="" autocomplete="off" /></label>
       <div class="row"><button id="ai-save" class="sb-submit">Save</button><button id="ai-test" class="sb-submit ghost">Test it</button><span id="ai-status" class="sb-status"></span></div>
@@ -78,7 +78,7 @@
           <li>Pick it above, fill in the model if you want a specific one, press <b>Save</b>, then <b>Test it</b>.</li>
           <li>To switch the account your AI uses, do it in that tool (in Claude Code: <code>/status</code> shows the account, <code>/login</code> switches it). SponsorSkip uses whatever it is signed in to.</li>
         </ol>
-        <p class="muted small">Any other AI works too if it has a command that reads a prompt on stdin and prints the answer: choose <b>Custom command</b>.</p>
+        <p class="muted small">Any other AI works too if it has a command that reads a prompt on stdin and prints the answer: put it in <code>ai-config.json</code> and choose <b>Custom command</b>.</p>
       </div>
       <div id="ai-agent" hidden>
         <p class="muted small">Paste this into the AI you use (any agent that can run commands on your computer):</p>

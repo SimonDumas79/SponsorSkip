@@ -47,18 +47,30 @@ export function loadConfig() {
   }
 }
 
-/** Save what the popup sent. An empty key keeps the saved one, so the popup never has to hold it. */
+/**
+ * Save what the popup sent. Three rules keep this route from being a way in (2026-09-24 review):
+ *  - A custom command is NEVER taken from here. It runs through a shell, and any installed browser
+ *    extension can reach this route, so the command comes only from editing ai-config.json by hand.
+ *  - The model name reaches a command line (Codex and Gemini run through a shell on Windows), so it
+ *    may only hold model-name characters.
+ *  - A stored API key stays only while the provider AND the URL are unchanged, so a key is only ever
+ *    sent to the URL it was entered with. An empty key field keeps it; the popup never holds it.
+ */
+const MODEL_NAME = /^[\w.:\/@-]{0,120}$/;
 export function saveConfig(input) {
   const was = loadConfig();
   const provider = PROVIDERS[input?.provider] ? input.provider : "claude";
   const str = (v, max = 500) => (typeof v === "string" ? v.trim().slice(0, max) : "");
+  const url = str(input.url).replace(/\/+$/, "");
+  const sameTarget = provider === was.provider && url === was.url;
   const next = {
     provider,
     model: str(input.model, 120),
-    command: str(input.command),
-    url: str(input.url).replace(/\/+$/, ""),
-    key: str(input.key) || (provider === was.provider ? was.key : ""),
+    command: was.command,
+    url,
+    key: str(input.key) || (sameTarget ? was.key : ""),
   };
+  if (!MODEL_NAME.test(next.model)) throw new Error("a model name can only hold letters, digits and . : / @ - _");
   if (next.url && !/^https?:\/\//.test(next.url)) throw new Error("the API URL must start with http:// or https://");
   fs.writeFileSync(CONFIG, JSON.stringify(next, null, 2));
   return publicConfig(next);

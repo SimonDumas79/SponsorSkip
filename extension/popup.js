@@ -104,7 +104,7 @@ function aiFields() {
 function aiShow(c) {
   $("ai-provider").value = c.provider;
   $("ai-model").value = c.model ?? "";
-  $("ai-command").value = c.command ?? "";
+  $("ai-command").textContent = c.command || "none set";
   $("ai-url").value = c.url ?? "";
   $("ai-key").value = "";
   $("ai-key").placeholder = c.hasKey ? "saved (leave blank to keep it)" : "your key, kept only on this PC";
@@ -119,8 +119,7 @@ const aiStatus = (text, cls = "") => {
 };
 $("ai-provider").onchange = aiFields;
 $("ai-save").onclick = async () => {
-  const config = { provider: $("ai-provider").value, model: $("ai-model").value, command: $("ai-command").value,
-                   url: $("ai-url").value, key: $("ai-key").value };
+  const config = { provider: $("ai-provider").value, model: $("ai-model").value, url: $("ai-url").value, key: $("ai-key").value };
   aiStatus("Saving…");
   const r = await api.runtime.sendMessage({ type: "aiSave", config });
   if (!r.ok) return aiStatus(r.error, "bad");

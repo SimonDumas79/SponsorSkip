@@ -9,7 +9,9 @@ const USER_AGENT = `SponsorSkip/${api.runtime.getManifest().version}`;
 
 async function call(route, timeoutMs, body) {
   try {
-    const init = body === undefined ? {} : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) };
+    // x-sponsorskip: the program refuses any request without it, which is what stops web pages (server.mjs).
+    const headers = { "x-sponsorskip": "1", ...(body === undefined ? {} : { "content-type": "application/json" }) };
+    const init = body === undefined ? { headers } : { method: "POST", headers, body: JSON.stringify(body) };
     const r = await fetch(BASE + route, { ...init, signal: AbortSignal.timeout(timeoutMs) });
     const json = await r.json();
     return r.ok ? { ok: true, data: json } : { ok: false, error: json.error || `HTTP ${r.status}` };
