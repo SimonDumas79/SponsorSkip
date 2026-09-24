@@ -6,8 +6,8 @@
  * Listens on 127.0.0.1 only (default port 4790). Zero npm dependencies; needs
  * yt-dlp (`python -m pip install --user yt-dlp`) for captions. Agents
  * (agents.mjs): Claude through the Claude Code CLI on the user's subscription,
- * and the local GPU model through Ollama. No API keys. Claude reads first by
- * default; `?reader=local` puts the GPU first (see readWithAgents for why
+ * or whatever AI the person picked in the popup (ai.mjs), and the local GPU
+ * model through Ollama. The free marker (level 1) is the default; `?reader=local` puts the GPU first (see readWithAgents for why
  * that isn't the default).
  * Results are cached per video in ./cache, so a rewatch costs nothing, and
  * every reading and every failure is appended to ./backend.log.
@@ -32,7 +32,8 @@ import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { AGENTS, claudeAvailable, localBlocker, readClaude, readLocal, readMarker } from "./agents.mjs";
+import { AGENTS, localBlocker, readAI, readLocal, readMarker } from "./agents.mjs";
+import { ask, available, publicConfig, saveConfig, test as testAI } from "./ai.mjs";
 import { ensureModels, modelStatus } from "./models.mjs";
 import { mergeOverlaps, parseSegments, snapStarts } from "./segments.mjs";
 import { getTranscript } from "./youtube.mjs";
@@ -193,7 +194,7 @@ async function readWithAgents(id, video, reader) {
       stage(id, firstStep);
       // Each part is published as it lands, so the page can start skipping
       // what has been found while the rest is still being read.
-      const { text, costUsd, parts, failed } = await readClaude(video, root, (p) => {
+      const { text, costUsd, parts, failed } = await readAI(video, (p) => {
         const soFar = clean(p.text);
         stage(id, "full", { segments: soFar, part: p.part, parts: p.parts, source: AGENTS.claude });
         log(id, `part ${p.part}/${p.parts}: ${soFar.length} segment(s) so far`);
@@ -292,22 +293,75 @@ function send(res, status, body, type = "application/json") {
   res.end(type === "application/json" ? JSON.stringify(body) : body);
 }
 
+/**
+ * The POST routes. Each one can spend the person's AI plan or change which program runs, so each
+ * checks who is asking. A web page can send a "simple" POST to 127.0.0.1 without a CORS preflight,
+ * but it cannot forge its Origin, so the popup's routes demand an extension origin. /ai-ask is for
+ * the marker's own Python process (level 3 placing edges) and demands the token it was started with.
+ */
+const ASK_TOKEN = crypto.randomBytes(24).toString("hex");
+function readBody(req, max = 1_000_000) {
+  return new Promise((resolve, reject) => {
+    let body = "";
+    req.on("data", (d) => {
+      body += d;
+      if (body.length > max) reject(new Error("body too large"));
+    });
+    req.on("end", () => {
+      try {
+        resolve(JSON.parse(body || "{}"));
+      } catch {
+        reject(new Error("body is not JSON"));
+      }
+    });
+  });
+}
+async function post(req, res, url) {
+  if (url.pathname === "/ai-ask") {
+    if (req.headers["x-sponsorskip-token"] !== ASK_TOKEN) return send(res, 403, { error: "forbidden" });
+    const { system = "", prompt = "", timeoutMs = 60_000 } = await readBody(req);
+    try {
+      return send(res, 200, await ask(String(system), String(prompt), { timeoutMs: Math.min(Number(timeoutMs) || 60_000, 180_000) }));
+    } catch (e) {
+      return send(res, 502, { error: String(e.message).slice(0, 300) });
+    }
+  }
+  if (!(res.origin && EXTENSION_ORIGIN.test(res.origin))) return send(res, 403, { error: "only the SponsorSkip extension can change this" });
+  if (url.pathname === "/ai-config") {
+    const saved = saveConfig(await readBody(req));
+    log("AI set to", saved.label);
+    return send(res, 200, saved);
+  }
+  if (url.pathname === "/ai-test") return send(res, 200, await testAI());
+  return send(res, 404, { error: "not found" });
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://localhost");
   res.origin = req.headers.origin ?? null;
   try {
-    if (req.method !== "GET") return send(res, 405, { error: "GET only" });
+    if (req.method === "OPTIONS") {
+      // Firefox preflights the popup's JSON POSTs. Answered for extension origins only.
+      if (!(res.origin && EXTENSION_ORIGIN.test(res.origin))) return send(res, 403, { error: "forbidden" });
+      res.writeHead(204, { "access-control-allow-origin": res.origin, "access-control-allow-methods": "GET, POST",
+                           "access-control-allow-headers": "content-type", vary: "Origin" });
+      return res.end();
+    }
+    if (req.method === "POST") return await post(req, res, url);
+    if (req.method !== "GET") return send(res, 405, { error: "GET or POST only" });
     if (url.pathname === "/health") {
-      const [blocker, claude] = await Promise.all([localBlocker(), claudeAvailable()]);
+      const [blocker, ai] = await Promise.all([localBlocker(), available()]);
       return send(res, 200, {
         ok: true,
         agents: [
           { name: AGENTS.local, ready: !blocker, note: blocker ?? "ready" },
-          { name: AGENTS.claude, ready: claude, note: claude ? "ready" : "Claude Code CLI not found (install it and log in)" },
+          { name: AGENTS.claude, ready: ai.ready, note: ai.note, yourAI: true },
         ],
+        ai: publicConfig(),
         models: modelStatus(),
       });
     }
+    if (url.pathname === "/ai-config") return send(res, 200, publicConfig());
     const m = /^\/(quick|analyze|progress)\/([\w-]+)$/.exec(url.pathname);
     if (!m) return send(res, 404, { error: "not found" });
     const [, route, id] = m;
@@ -340,6 +394,8 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, "127.0.0.1", () => {
-  console.log(`SponsorSkip backend on http://127.0.0.1:${PORT} (readers: ${AGENTS.claude}; ${AGENTS.local})`);
+  process.env.SPONSORSKIP_ASK_URL = `http://127.0.0.1:${PORT}/ai-ask`; // inherited by the marker's Python (level 3)
+  process.env.SPONSORSKIP_ASK_TOKEN = ASK_TOKEN;
+  console.log(`SponsorSkip backend on http://127.0.0.1:${PORT} (your AI: ${AGENTS.claude}; GPU: ${AGENTS.local})`);
   ensureModels(root, log);
 });

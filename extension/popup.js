@@ -84,15 +84,57 @@ for (const r of document.querySelectorAll('input[name="reader"]'))
     api.storage.sync.set({ reader: e.target.value });
   });
 
-// Manage AI model: two ways to point SponsorSkip at the person's own AI, by hand or by their agent.
-const AI_PROMPT = `Help me set up the AI reader for SponsorSkip, the YouTube sponsor-skipping extension, on this computer.
+// Manage AI model: pick the person's own AI (server/ai.mjs), by hand or with their agent's help.
+const AI_PROMPT = `Help me connect SponsorSkip, the YouTube sponsor-skipping extension, to the AI I use, on this computer.
 
 1. Read SETUP_WITH_AN_AI_AGENT.md in https://github.com/SimonDumas79/SponsorSkip first and follow its rules.
-2. Check whether SponsorSkip's program is running: GET http://127.0.0.1:4790/health.
-3. If I use Claude: check that Claude Code is installed and tell me which account it is signed in to. Never sign in for me; tell me what to type (/status, /login).
-4. If I use a different AI: explain what SponsorSkip supports today and what adding my model as a reader in server/agents.mjs would take. Ask before changing any code.
-5. Ask before installing anything, and before any test that reads a video with my plan.`;
+2. Check whether SponsorSkip's program is running: GET http://127.0.0.1:4790/health (its "ai" field shows the AI it uses now).
+3. SponsorSkip can use Claude Code, Codex CLI, Gemini CLI, Ollama, any command that reads a prompt on stdin and prints the answer, or an OpenAI-compatible API with my own key. Work out which fits the AI I use, check that its tool is installed and signed in (never sign in for me; tell me what to type), and tell me what to pick under "Manage AI model" in the extension's popup.
+4. Ask before installing anything, and before any test that uses my plan or my key.`;
 $("ai-prompt").value = AI_PROMPT;
+const AI_HINT = { claude: "haiku (default), sonnet, opus", codex: "blank = Codex's default", gemini: "blank = Gemini's default",
+                  ollama: "qwen3:8b (default), or any model you pulled", custom: "", openai: "e.g. gpt-4o-mini" };
+function aiFields() {
+  const p = $("ai-provider").value;
+  $("ai-model-row").hidden = p === "custom";
+  $("ai-command-row").hidden = p !== "custom";
+  $("ai-url-row").hidden = $("ai-key-row").hidden = p !== "openai";
+  $("ai-model").placeholder = AI_HINT[p] ?? "";
+}
+function aiShow(c) {
+  $("ai-provider").value = c.provider;
+  $("ai-model").value = c.model ?? "";
+  $("ai-command").value = c.command ?? "";
+  $("ai-url").value = c.url ?? "";
+  $("ai-key").value = "";
+  $("ai-key").placeholder = c.hasKey ? "saved (leave blank to keep it)" : "your key, kept only on this PC";
+  $("ai-measured").textContent = c.measured
+    ? "Accuracy measured with this AI (Claude Haiku)."
+    : "Works with the same instructions, but only Claude Haiku's accuracy has been measured so far.";
+  aiFields();
+}
+const aiStatus = (text, cls = "") => {
+  $("ai-status").className = `sb-status ${cls}`;
+  $("ai-status").textContent = text;
+};
+$("ai-provider").onchange = aiFields;
+$("ai-save").onclick = async () => {
+  const config = { provider: $("ai-provider").value, model: $("ai-model").value, command: $("ai-command").value,
+                   url: $("ai-url").value, key: $("ai-key").value };
+  aiStatus("Saving…");
+  const r = await api.runtime.sendMessage({ type: "aiSave", config });
+  if (!r.ok) return aiStatus(r.error, "bad");
+  aiShow(r.data);
+  aiStatus(`Saved: ${r.data.label}`, "ok");
+  connection();
+};
+$("ai-test").onclick = async () => {
+  aiStatus("Asking it a one-line question…");
+  const r = await api.runtime.sendMessage({ type: "aiTest" });
+  if (!r.ok) return aiStatus(r.error, "bad");
+  aiStatus(r.data.ok ? `Answered in ${r.data.seconds} s` : r.data.error, r.data.ok ? "ok" : "bad");
+};
+api.runtime.sendMessage({ type: "aiGet" }).then((r) => r?.ok && aiShow(r.data));
 $("ai-toggle").onclick = () => {
   $("ai").hidden = !$("ai").hidden;
   $("ai-toggle").textContent = $("ai").hidden ? "Manage AI model" : "Hide";
@@ -124,11 +166,12 @@ async function connection() {
     $("setup").hidden = false;
     return;
   }
-  const [claude, local] = [h.data.agents.find((a) => /claude/i.test(a.name)), h.data.agents.find((a) => /GPU/.test(a.name))];
-  $("conn-dot").className = `dot ${claude?.ready ? "ok" : "warn"}`;
-  $("conn-title").textContent = claude?.ready ? "Connected: Claude via Claude Code" : "Connected, but Claude Code isn't available";
-  $("conn-detail").textContent = `Local GPU: ${local?.note ?? "unknown"}.`;
-  $("setup").hidden = !!claude?.ready;
+  // The free marker needs no AI, so a missing AI is a note, not a failure.
+  const ai = h.data.agents.find((a) => a.yourAI);
+  $("conn-dot").className = "dot ok";
+  $("conn-title").textContent = "Connected";
+  $("conn-detail").textContent = ai?.ready ? `Your AI: ${ai.name}.` : `Your AI: ${ai?.name ?? "not set"}, ${ai?.note ?? "not available"}. The free marker works without it.`;
+  $("setup").hidden = true;
 }
 
 // The popup is a live view, not a snapshot: a reading usually finishes while

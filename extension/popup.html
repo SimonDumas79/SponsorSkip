@@ -16,7 +16,7 @@
     <div class="row"><span class="dot" id="conn-dot"></span><strong id="conn-title">Checking this PC…</strong></div>
     <p id="conn-detail" class="muted"></p>
     <ol id="setup" hidden>
-      <li>Install <b>Claude Code</b> and log in with your Claude account (run <code>claude</code> once).</li>
+      <li>Optional, for the AI options: sign in to your AI's command-line tool (Claude Code, Codex, Gemini), or set up Ollama or an API key, under <b>Manage AI model</b>.</li>
       <li>Install captions support: <code>python -m pip install --user yt-dlp</code></li>
       <li>Start SponsorSkip: run <code>start-hidden.vbs</code> in the SponsorSkip folder (it also starts at login once set up).</li>
     </ol>
@@ -47,26 +47,41 @@
     <label class="choice"><input type="radio" name="reader" value="marker-v3" /> Free marker on this PC: no language model, skips only what it is sure of <span class="tag">default</span></label>
     <label class="choice"><input type="radio" name="reader" value="marker-v3-cascade" /> Free marker finds the reads, your AI places each edge</label>
     <label class="choice"><input type="radio" name="reader" value="claude" /> Your AI reads the whole video <span class="tag">most accurate</span></label>
-    <p class="muted small">The free marker is the default and never leaves this PC. The other two are opt-in and use your own AI plan through Claude Code; "places each edge" sends it only the few lines around each find.</p>
+    <p class="muted small">The free marker is the default and never leaves this PC. The other two are opt-in and use your own AI (Manage AI model); "places each edge" sends it only the few lines around each find.</p>
     <label class="choice"><input type="checkbox" id="skipSelfpromo" /> Skip self-promotion too (merch, Patreon, memberships)</label>
 
     <div id="ai" hidden>
-      <p class="muted small">SponsorSkip reaches your AI through the program on this PC. Today that means Claude, through your own Claude Code sign-in: no API key, nothing billed but your plan.</p>
+      <p class="muted small">SponsorSkip asks the AI you already use, through the program on this PC. Pick it here.</p>
+      <label class="field">Your AI
+        <select id="ai-provider">
+          <option value="claude">Claude Code (your Claude plan)</option>
+          <option value="codex">Codex CLI (your ChatGPT plan)</option>
+          <option value="gemini">Gemini CLI (your Google account)</option>
+          <option value="ollama">Ollama on this PC (free, nothing leaves the PC)</option>
+          <option value="custom">Custom command</option>
+          <option value="openai">API endpoint + your own key</option>
+        </select>
+      </label>
+      <label class="field" id="ai-model-row">Model <input id="ai-model" placeholder="" /></label>
+      <label class="field" id="ai-command-row" hidden>Command <input id="ai-command" placeholder="reads the prompt on stdin, prints the answer" /></label>
+      <label class="field" id="ai-url-row" hidden>API base URL <input id="ai-url" placeholder="https://api.openai.com/v1" /></label>
+      <label class="field" id="ai-key-row" hidden>API key <input id="ai-key" type="password" placeholder="" autocomplete="off" /></label>
+      <div class="row"><button id="ai-save" class="sb-submit">Save</button><button id="ai-test" class="sb-submit ghost">Test it</button><span id="ai-status" class="sb-status"></span></div>
+      <p id="ai-measured" class="muted small"></p>
       <div class="tabs">
         <button id="ai-tab-self" class="tab on">Set it up myself</button>
         <button id="ai-tab-agent" class="tab">Let my AI do it</button>
       </div>
       <div id="ai-self">
         <ol>
-          <li>Install <b>Claude Code</b>, open a terminal and run <code>claude</code>. Sign in with the Claude account whose plan you want SponsorSkip to use.</li>
-          <li>To see which account is signed in, type <code>/status</code> inside <code>claude</code>. To switch accounts, type <code>/login</code> (or <code>/logout</code> to sign out).</li>
-          <li>Optional: pick the Claude model by setting <code>SPONSORSKIP_MODEL</code> (<code>haiku</code>, the default, or <code>sonnet</code>) before starting the program.</li>
-          <li>Restart SponsorSkip: run <code>start-hidden.vbs</code> in the SponsorSkip folder. The line at the top of this popup turns green when it can reach Claude.</li>
+          <li>Install your AI's command-line tool and sign in once in a terminal: <code>claude</code> for Claude Code, <code>codex</code> for Codex, <code>gemini</code> for Gemini. For Ollama, install it and <code>ollama pull</code> a model. For an API, have its base URL and a key ready.</li>
+          <li>Pick it above, fill in the model if you want a specific one, press <b>Save</b>, then <b>Test it</b>.</li>
+          <li>To switch the account your AI uses, do it in that tool (in Claude Code: <code>/status</code> shows the account, <code>/login</code> switches it). SponsorSkip uses whatever it is signed in to.</li>
         </ol>
-        <p class="muted small">Using a different AI? SponsorSkip only talks to Claude Code today. Adding another means a new reader next to Claude's in <code>server/agents.mjs</code>; the "Let my AI do it" prompt asks your AI to look into it with you.</p>
+        <p class="muted small">Any other AI works too if it has a command that reads a prompt on stdin and prints the answer: choose <b>Custom command</b>.</p>
       </div>
       <div id="ai-agent" hidden>
-        <p class="muted small">Paste this into the AI you use (Claude Code or any agent that can run commands on your computer):</p>
+        <p class="muted small">Paste this into the AI you use (any agent that can run commands on your computer):</p>
         <textarea id="ai-prompt" readonly rows="7"></textarea>
         <div class="row"><button id="ai-copy" class="sb-submit">Copy prompt</button><span id="ai-copied" class="sb-status ok"></span></div>
       </div>

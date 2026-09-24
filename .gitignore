@@ -3,3 +3,4 @@ backend.log
 node_modules/
 marker/data/
 __pycache__/
+ai-config.json

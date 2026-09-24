@@ -7,9 +7,10 @@ const BASE = "http://127.0.0.1:4790";
 const SB = "https://sponsor.ajay.app";
 const USER_AGENT = `SponsorSkip/${api.runtime.getManifest().version}`;
 
-async function call(route, timeoutMs) {
+async function call(route, timeoutMs, body) {
   try {
-    const r = await fetch(BASE + route, { signal: AbortSignal.timeout(timeoutMs) });
+    const init = body === undefined ? {} : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) };
+    const r = await fetch(BASE + route, { ...init, signal: AbortSignal.timeout(timeoutMs) });
     const json = await r.json();
     return r.ok ? { ok: true, data: json } : { ok: false, error: json.error || `HTTP ${r.status}` };
   } catch (e) {
@@ -102,6 +103,9 @@ api.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     quick: () => call(`/quick/${msg.id}`, 15_000),
     analyze: () => call(`/analyze/${msg.id}?reader=${readerFor(msg.reader)}${msg.fresh ? "&fresh=1" : ""}`, 600_000),
     progress: () => call(`/progress/${msg.id}`, 10_000),
+    aiGet: () => call("/ai-config", 10_000),
+    aiSave: () => call("/ai-config", 10_000, msg.config),
+    aiTest: () => call("/ai-test", 120_000, {}),
     sbLookup: () => sbLookup(msg.id),
     sbSubmit: () => sbSubmit(msg),
   }[msg.type];

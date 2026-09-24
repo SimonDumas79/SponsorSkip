@@ -1,11 +1,11 @@
 /**
  * The two agents that can read a transcript (the order is chosen in
- * server.mjs, readWithAgents: Claude first by default):
+ * server.mjs, readWithAgents: the person's AI first by default):
  *
- *   claude: Claude Haiku through the Claude Code CLI (`claude -p`), on
- *           the user's subscription. No API key, no tools, no MCP servers, no hooks.
- *           Reads the opening on its own first, so the start of a video is
- *           covered within seconds, then reads the whole transcript.
+ *   claude: the person's own AI, as picked in the popup (ai.mjs): Claude Code by default,
+ *           or Codex, Gemini, Ollama, a custom command or an API endpoint. The reader value
+ *           stays "claude" for old settings' sake. Reads the opening on its own first, so
+ *           the start of a video is covered within seconds, then the whole transcript.
  *   local:  qwen3:8b on the user's GPU through Ollama. Free, but measured well
  *           below Claude on this task (2 of 6 reads found). The transcript is
  *           read in parts that fit its 16k context, the model is unloaded as
@@ -27,15 +27,15 @@
 import { execFile, spawn } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
+import { ask, describe, loadConfig } from "./ai.mjs";
 import { SYSTEM_PROMPT, buildPrompt, extractJson } from "./segments.mjs";
 
 const OLLAMA = (process.env.OLLAMA_URL || "http://localhost:11434").replace(/\/+$/, "");
 const LOCAL_MODEL = process.env.SPONSORSKIP_LOCAL_MODEL || "qwen3:8b";
-const CLAUDE_MODEL = process.env.SPONSORSKIP_MODEL || "haiku";
 const CHUNK_CHARS = Number(process.env.SPONSORSKIP_CHUNK_CHARS) || 30_000; // ~8k tokens per part, leaving room in a 16k context for thinking and the answer
 // How much of the opening Claude reads on its own first, so a sponsor read at
 // the start is skippable within seconds. Small on purpose: it is a head start,
-// not the answer (see readClaude).
+// not the answer (see readAI).
 const HEAD_SECONDS = Number(process.env.SPONSORSKIP_HEAD_SECONDS) || 420;
 const OVERLAP_S = 120; // parts overlap so a read that straddles a cut is seen whole at least once
 const GPU_BUSY_MIB = 2500;
@@ -121,12 +121,13 @@ export function chunkTranscript(transcript, maxChars = CHUNK_CHARS, overlapS = O
   return parts;
 }
 
-async function unload() {
-  await fetch(`${OLLAMA}/api/generate`, { method: "POST", body: JSON.stringify({ model: LOCAL_MODEL, keep_alive: 0 }), signal: AbortSignal.timeout(15_000) }).catch(() => {});
+async function unload(model = LOCAL_MODEL) {
+  await fetch(`${OLLAMA}/api/generate`, { method: "POST", body: JSON.stringify({ model, keep_alive: 0 }), signal: AbortSignal.timeout(15_000) }).catch(() => {});
 }
 
 /** Local agent: reads each part, returns every raw segment it found (unvalidated). */
-export async function readLocal(video) {
+// `model`: qwen3:8b for the GPU reader; whatever Ollama model the person picked when their AI is Ollama.
+export async function readLocal(video, model = LOCAL_MODEL) {
   const parts = chunkTranscript(video.transcript);
   const found = [];
   let hot = null;
@@ -144,7 +145,7 @@ export async function readLocal(video) {
       const r = await fetch(`${OLLAMA}/api/chat`, {
         method: "POST",
         body: JSON.stringify({
-          model: LOCAL_MODEL,
+          model,
           stream: false,
           think: true,
           format: SCHEMA,
@@ -166,52 +167,16 @@ export async function readLocal(video) {
     }
   } finally {
     clearInterval(watch);
-    await unload();
+    await unload(model);
   }
   return { text: JSON.stringify({ segments: found }), parts: parts.length };
 }
 
-/** One `claude -p` call: the raw answer text and what it cost. */
-function runClaude(prompt, cwd) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(
-      "claude",
-      [
-        "-p",
-        "--model", CLAUDE_MODEL,
-        "--tools", "",
-        "--strict-mcp-config",
-        "--no-session-persistence",
-        "--setting-sources", "project",
-        "--output-format", "json",
-        "--system-prompt", SYSTEM_PROMPT,
-      ],
-      // No shell: claude is a native .exe, and a shell would have to re-quote
-      // the multi-line system prompt.
-      { cwd, windowsHide: true },
-    );
-    let out = "";
-    let err = "";
-    const timer = setTimeout(() => child.kill(), 180_000);
-    child.stdout.on("data", (d) => (out += d));
-    child.stderr.on("data", (d) => (err += d));
-    child.on("error", (e) => reject(new Error(`Claude Code CLI not available: ${e.message}`)));
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      try {
-        const json = JSON.parse(out);
-        if (json.is_error) return reject(new Error(`claude: ${json.result ?? "error"}`));
-        resolve({ text: json.result ?? "", costUsd: json.total_cost_usd ?? null });
-      } catch {
-        reject(new Error(`claude exited ${code}: ${(err || out).slice(0, 300)}`));
-      }
-    });
-    child.stdin.end(prompt);
-  });
-}
+/** One call to the person's AI (ai.mjs): the raw answer text and what it cost, if it says. */
+const runAI = (prompt) => ask(SYSTEM_PROMPT, prompt);
 
 /**
- * Claude agent via the Claude Code CLI, on the user's subscription.
+ * The person's AI (ai.mjs; Claude Code by default), reading the whole video.
  *
  * Two passes: a short one over the opening, then the whole transcript.
  *
@@ -233,7 +198,13 @@ function runClaude(prompt, cwd) {
  * the boundary is always seen whole by it, and nothing depends on stitching
  * parts together. The opening pass is best-effort: if it fails, it is ignored.
  */
-export async function readClaude(video, cwd, onPart) {
+export async function readAI(video, onPart) {
+  // Ollama models have small contexts, so they read in parts, as the GPU reader always has.
+  const config = loadConfig();
+  if (config.provider === "ollama") {
+    const { text, parts } = await readLocal(video, config.model || "qwen3:8b");
+    return { text, costUsd: null, parts, failed: null };
+  }
   const head = video.transcript.filter((l) => l.start <= HEAD_SECONDS);
   const useHead = head.length > 0 && head.length < video.transcript.length;
   let costUsd = 0;
@@ -242,7 +213,7 @@ export async function readClaude(video, cwd, onPart) {
     try {
       const note = `
 (This is only the first ${Math.round(HEAD_SECONDS / 60)} minutes of a longer transcript. Report only segments that start within it.)`;
-      const first = await runClaude(buildPrompt({ ...video, transcript: head }) + note, cwd);
+      const first = await runAI(buildPrompt({ ...video, transcript: head }) + note);
       costUsd += first.costUsd || 0;
       const parsed = extractJson(first.text);
       if (parsed && Array.isArray(parsed.segments)) onPart?.({ text: first.text, part: 1, parts: 2 });
@@ -252,20 +223,27 @@ export async function readClaude(video, cwd, onPart) {
   }
 
   // The answer. Throwing here is right: the caller falls back to the other reader.
-  const full = await runClaude(buildPrompt(video), cwd);
+  const full = await runAI(buildPrompt(video));
   costUsd += full.costUsd || 0;
   return { text: full.text, costUsd: costUsd || null, parts: useHead ? 2 : 1, failed: null };
 }
 
 export const AGENTS = {
   local: `${LOCAL_MODEL} (local GPU)`,
-  claude: `claude-${CLAUDE_MODEL} (Claude Code)`,
+  // Your AI, as picked in the popup. A getter: the choice can change while the program runs.
+  get claude() {
+    return describe();
+  },
   marker: "marker free tier (CPU, no language model)",
   "marker-candidate": "marker candidate: six detectors + fine-tuned BGE (CPU)",
-  "marker-cascade": `marker finds, claude-${CLAUDE_MODEL} places each edge`,
+  get "marker-cascade"() {
+    return `marker finds, ${describe()} places each edge`;
+  },
   "marker-qwen": `marker + ${LOCAL_MODEL} checks (local GPU)`,
   "marker-v3": "marker v3: seven detectors incl. the community model (CPU)",
-  "marker-v3-cascade": `marker v3 finds, claude-${CLAUDE_MODEL} places each edge`,
+  get "marker-v3-cascade"() {
+    return `marker v3 finds, ${describe()} places each edge`;
+  },
 };
 
 const PYTHON = process.env.SPONSORSKIP_PYTHON || "python";
@@ -317,9 +295,4 @@ export function readMarker(id, video, root, { tier = "free", timeoutMs = MARKER_
       "utf8",
     );
   });
-}
-
-/** Is the Claude Code CLI on this PC? (Cheap: no model call.) */
-export async function claudeAvailable() {
-  return (await execText("claude", ["--version"], 15_000)) !== null;
 }

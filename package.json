@@ -1,6 +1,6 @@
 {
   "name": "sponsorskip",
-  "version": "0.9.1",
+  "version": "0.10.0",
   "private": true,
   "license": "GPL-3.0-only",
   "description": "A mix of multiple small, directed models used to mark and skip sponsored content on YouTube.",

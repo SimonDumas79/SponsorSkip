@@ -13,6 +13,11 @@ video, beyond the old free tier: the potion embedding (8M parameters) and the fi
 checkpoint in the bundle computes them from the caption lines.
 """
 
+import json
+import os
+import re
+import urllib.request
+
 import numpy as np
 import torch
 from torch import nn
@@ -23,6 +28,25 @@ from predict import BUNDLE, stage_from
 from sequence_model import SequenceMarker
 
 DEFAULT = BUNDLE.parent / "candidate.pt"
+
+
+def ask_program(prompt: str, timeout: float = 60.0) -> dict | None:
+    """One question to the person's AI through the running program (server/ai.mjs). Same contract as
+    claude_label.ask_claude: the answer's first JSON object, {"_error": ...} on failure, None if unusable."""
+    req = urllib.request.Request(os.environ["SPONSORSKIP_ASK_URL"], method="POST",
+                                 data=json.dumps({"prompt": prompt, "timeoutMs": int(timeout * 1000)}).encode("utf-8"),
+                                 headers={"content-type": "application/json",
+                                          "x-sponsorskip-token": os.environ.get("SPONSORSKIP_ASK_TOKEN", "")})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout + 10) as r:
+            text = json.loads(r.read().decode("utf-8")).get("text", "")
+    except Exception as e:  # noqa: BLE001 -- any failure means "keep the marker's own edges"
+        return {"_error": str(e)[-200:]}
+    match = re.search(r"\{[\s\S]*?\}", text.replace("```json", "").replace("```", ""))
+    try:
+        return json.loads(match.group(0)) if match else None
+    except json.JSONDecodeError:
+        return None
 
 
 class Candidate:
@@ -317,6 +341,11 @@ class CandidateTier(Candidate):
         if self.edges_with == "local":
             from qwen_edges import ASK as LOCAL_ASK, ask_edges
             a = ask_edges(LOCAL_ASK + "\n\n" + text)
+        elif os.environ.get("SPONSORSKIP_ASK_URL"):
+            # Served by the program: ask whatever AI the person picked (server/ai.mjs), through the
+            # program's token-guarded /ai-ask route, so every model call goes through one adapter.
+            from cascade import ASK
+            a = ask_program(ASK + "\n\n" + text)
         else:
             from cascade import ASK
             from claude_label import ask_claude
