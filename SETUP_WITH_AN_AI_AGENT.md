@@ -81,7 +81,10 @@ python -m pip install --user numpy torch transformers sentence-transformers mode
 A CPU-only PyTorch is enough; the marker never uses the GPU. **The model files are not in the
 repository.** The program downloads them itself the first time it starts (about 200 MB, from the GitHub
 release named in `models.json`, checked against its sha256, unpacked into `marker/data/production/`).
-Tell the person it is a one-time download of that size before you start the program. Until it finishes,
+Level 1's first reading also fetches its base models from Hugging Face (about 1 GB more, cached in
+`~/.cache/huggingface`), so the first video is slow and needs the network. Tell the person the whole
+one-time cost before you start the program: several GB of Python packages, about 200 MB of SponsorSkip's
+models, and about 1 GB from Hugging Face. Until it finishes,
 level 1 falls back to SponsorBlock's community segments. `GET http://127.0.0.1:4790/health` shows
 `models.state`: `downloading`, `ready`, or `failed` with the reason (a failed download is retried at the
 next start). The files are CC BY-NC-SA 4.0 (`NOTICE.md`).
