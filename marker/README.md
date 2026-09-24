@@ -1164,3 +1164,18 @@ So a flat 180 s cap is not free: it could take up to ~5 points of ad time back f
 Smarter variant, not yet testable: cap only when the resume quote did not snap to a caption line (a
 runaway end presumably has none). Testing either needs served-reader answers on a burned set (holdout 4,
 64 videos, roughly $4 of plan usage at holdout 5's rate); served answers exist only for holdout 5.
+
+### Shrinking the three fine-tuned models: fp16 is free, int8 is not (2026-09-24, `compress_parity.py`)
+The bundle's bge / edge_start / edge_resume checkpoints weigh 401 MB together (fp32). Each compression
+was run through the serving code (CPU, gated, v3 at B = 10) on holdout 4 (64 videos, already graded)
+and compared with the fp32 originals on the same rows.
+
+| models | size | line-score change vs fp32 (max) | regions identical | ad time | show lost / video |
+|---|---|---|---|---|---|
+| fp32 (shipped) | 401 MB | - | - | 66.2% | 5.0 s |
+| **fp16 weights, upcast at load** | **200 MB** | 0.008 | **51 of 51 videos** | 66.2% | 5.0 s |
+| int8 dynamic (Linear layers) | 208 MB | 0.999 | 25 of 51 | 67.1% | 5.5 s |
+
+**fp16 halves the download with no change in what gets skipped.** int8 saves nothing more (the
+embedding table stays fp32) and changes half the videos' regions, so its +0.9 points is drift, not a
+gain. Not applied to the bundle yet: that is decision 5.
