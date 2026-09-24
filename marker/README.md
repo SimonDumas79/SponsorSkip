@@ -1110,3 +1110,39 @@ Claude's any-promo labels, against v3's inputs retrained on the same target: B =
 40.9 / 41.7 / 43.7% (+2.4 to +6.5), B = 10 52.1 / 48.0 / 59.1% vs 57.7 / 61.5 / 59.3% (worse). Inconsistent;
 not adopted. Retargeting alone (v3 inputs on Claude's labels, 57.7-61.5%) matches v3 as built on those
 labels (57.5-60.9%). Every way of attaching the detector to v3 (veto, union, input) has now failed.
+
+### Enlarging the stack's training pool to 494 videos: sharper edges, no more ad time (2026-09-24, `enlarge_pool.py`, `enlarge_claude.py`, `enlarge_stack.py`)
+
+Every set already graded or used as a tripwire joins the pool: 494 videos, 326 channels, 619 reads, 434
+stack-eligible (160 original + 274 new). All streams re-run out-of-fold over the enlarged pool; nothing
+here touches a live holdout (holdout 6 is the fresh test). Seeds 0 / 1 / 2 throughout.
+
+**Fine-tuned BGE detectors, old (205 videos) vs enlarged (494), average precision on the same 205 videos:**
+inside a read 0.730 -> 0.737 (unchanged); start line 0.111 / 0.130 / 0.131 -> **0.164** (0.160 on the 289
+added videos); resume line 0.192 / 0.187 / 0.194 -> **0.230** (0.206 on the added). More data sharpens the
+edge heads, not the detector.
+
+**Comparison 1, stacking step trained on 434 vs the original 160**, same (enlarged) detector streams, graded on
+the 274 new videos. B = 5: 48.4 / 48.6 / 50.3% vs 47.8 / 52.7 / 52.4%. B = 10: 71.3 / 72.4 / 70.9% at
+8.3 / 8.5 / 8.2 s vs 71.3 / 73.4 / 71.9% at 9.0 / 9.9 / 9.4 s. The bigger pool buys about 1.1 s less show
+lost per video for about 0.7 points less ad time: the 160-video stack was NOT badly overfit.
+
+**Comparison 2, fine-tuned Claude-category detector as an 8th input**, all 434 videos, B = 10: 69.9 / 69.8 /
+70.3% vs v3's 69.5 / 70.7 / 71.1%; B = 5 57.6 / 57.8 / 59.1% vs 58.6 / 59.3 / 59.2%. Not adopted (still fails
+on the bigger pool). qwen's recorded answers skipped: no sweep exists for the 274 new videos.
+
+**Comparison 3, the stacking step's shape** (all 434, B = 5 / B = 10 ad time, mean of 3 seeds, show lost at B = 10):
+
+| stacking step | B = 5 | B = 10 | show lost |
+|---|---|---|---|
+| hidden 32, wd 0.01, dropout 0.2 (recipe of record) | 59.0% | 70.4% | 8.0 s |
+| linear (hidden 0) | 53.2% | 68.4% | 8.2 s |
+| wd 0.1 | 59.8% | 70.0% | 7.9 s |
+| wd 0.3 | 59.7% | 70.6% | 8.3 s |
+| dropout 0.5 | **60.9%** | 70.7% | 8.2 s |
+
+The hidden layer earns its place (linear loses 6 points at B = 5). Dropout 0.5 wins at B = 5 on every seed
+(+1.9) and ties at B = 10: a candidate for holdout 6, not adopted on CV alone. Weight decay does nothing.
+
+Verdict: no change to v3. Open for Simon: retrain the shipped stack on 434 videos (about 1 s less show cut,
+ad time flat) and/or dropout 0.5, both to be graded once on holdout 6.

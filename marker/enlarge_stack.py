@@ -33,6 +33,7 @@ Comparison 3: hidden=0 (linear) vs hidden=32 for the stacking step, and stronger
     python marker/enlarge_stack.py
 """
 
+import argparse
 import datetime
 import json
 import sys
@@ -164,7 +165,7 @@ def comparison2(rows, streams, sb, extra, heads_start, heads_end, unseen) -> Non
           f"Adding it honestly would need qwen3:8b answers recorded for those videos first.")
 
 
-def comparison3(rows, streams, sb, extra, heads_start, heads_end, unseen) -> None:
+def comparison3(rows, streams, sb, extra, heads_start, heads_end, unseen, which=None) -> None:
     print("=" * 100)
     print("COMPARISON 3: simpler / more regularised stacking step, on the enlarged pool")
     print("=" * 100)
@@ -177,7 +178,9 @@ def comparison3(rows, streams, sb, extra, heads_start, heads_end, unseen) -> Non
         ("hidden=32, wd=0.3", dict(hidden=32, weight_decay=0.3)),
         ("hidden=32, dropout=0.5", dict(hidden=32, dropout=0.5)),
     ]
-    for label, kwargs in variants:
+    for i, (label, kwargs) in enumerate(variants):
+        if which is not None and i not in which:
+            continue
         for seed in SEEDS:
             oof = oof_seeded(S_full, F_full, seed, **kwargs)
             g = graded(sweep_fine(oof, S_full, hs_full, he_full), S_full)
@@ -187,19 +190,29 @@ def comparison3(rows, streams, sb, extra, heads_start, heads_end, unseen) -> Non
 
 
 def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--only", type=int, nargs="+", default=[1, 2, 3], help="which comparisons to run")
+    ap.add_argument("--threads", type=int, default=6)
+    ap.add_argument("--variants", type=int, nargs="+", help="comparison 3 variant indices (0 = recipe of record)")
+    args = ap.parse_args()
+    torch.set_num_threads(args.threads)
     rows = pooled(ENLARGED_SETS)
     if isinstance(rows, tuple):
         rows = rows[0]
     print(f"enlarged pool: {rows.videos} videos, {len(set(rows.channel))} channels, {rows.reads} reads")
     unseen, orig = masks(rows)
     new_unseen = unseen & ~orig
-    print(f"stack-eligible (post-2022-04): {int(unseen.sum())} of {rows.videos} "
-         f"({int((unseen & orig).sum())} original + {int(new_unseen.sum())} newly added)\n")
+    n_videos = lambda m: len(np.unique(rows.video[m]))
+    print(f"stack-eligible (post-2022-04): {n_videos(unseen)} of {rows.videos} videos "
+         f"({n_videos(unseen & orig)} original + {n_videos(new_unseen)} newly added)\n")
     streams, sb, extra, heads_start, heads_end = load_streams(rows)
 
-    comparison1(rows, streams, sb, extra, heads_start, heads_end, unseen, orig, new_unseen)
-    comparison2(rows, streams, sb, extra, heads_start, heads_end, unseen)
-    comparison3(rows, streams, sb, extra, heads_start, heads_end, unseen)
+    if 1 in args.only:
+        comparison1(rows, streams, sb, extra, heads_start, heads_end, unseen, orig, new_unseen)
+    if 2 in args.only:
+        comparison2(rows, streams, sb, extra, heads_start, heads_end, unseen)
+    if 3 in args.only:
+        comparison3(rows, streams, sb, extra, heads_start, heads_end, unseen, args.variants)
     return 0
 
 
