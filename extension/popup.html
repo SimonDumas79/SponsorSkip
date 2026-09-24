@@ -44,11 +44,11 @@
 
   <section class="card">
     <strong>Reader</strong>
-    <label class="choice"><input type="radio" name="reader" value="marker-v3" /> 1. Free marker on this PC: no language model, skips only what it is sure of</label>
+    <label class="choice"><input type="radio" name="reader" value="marker-v3" /> 1. Free marker on this PC: no language model, skips only what it is sure of <span class="tag">default</span></label>
     <label class="choice disabled" title="Not built yet"><input type="radio" name="reader" value="marker-v3-check" disabled /> 2. Free marker + your GPU checks each find <span class="tag">coming</span></label>
     <label class="choice"><input type="radio" name="reader" value="marker-v3-cascade" /> 3. Free marker finds the reads, Claude places each edge</label>
     <label class="choice"><input type="radio" name="reader" value="claude" /> 4. Claude reads the whole video <span class="tag">most accurate</span></label>
-    <p class="muted small">Levels 1 and 2 never leave this PC. Levels 3 and 4 use Claude Code on your subscription; level 3 sends Claude only the few lines around each find.</p>
+    <p class="muted small">Level 1 is free. Levels 2-4 are opt-in and cost you something: your GPU or your Claude plan. Levels 1 and 2 never leave this PC. Levels 3 and 4 use Claude Code on your subscription; level 3 sends Claude only the few lines around each find.</p>
     <label class="choice"><input type="checkbox" id="skipSelfpromo" /> Skip self-promotion too (merch, Patreon, memberships)</label>
   </section>
 

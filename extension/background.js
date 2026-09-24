@@ -42,7 +42,7 @@ async function sbLookup(id) {
 /**
  * The private SponsorBlock user ID for these submissions. Created once and
  * kept in synced storage, so every browser signed into the same account
- * submits as one user. Simon can paste his existing SponsorBlock ID instead.
+ * submits as one user. You can paste your existing SponsorBlock ID instead.
  * It is a secret: SponsorBlock only ever publishes a hash of it.
  */
 async function sbUserId() {
@@ -54,7 +54,7 @@ async function sbUserId() {
 }
 
 /**
- * Submit ONE segment Simon has previewed and approved in the popup.
+ * Submit ONE segment the user has previewed and approved in the popup.
  * SponsorBlock forbids automated submissions (wiki: "Automating
  * submissions"). The popup enforces that both edges were previewed first,
  * and nothing in this extension calls this without a click on Submit.
@@ -84,15 +84,15 @@ async function sbSubmit({ id, start, end, category, duration }) {
   }
 }
 
-// Simon's four levels (2026-09-22). Settings saved by 0.7.x name readers that are gone; each maps to
+// Four levels (2026-09-22); level 1 is the default and 2-4 are opt-in (2026-09-24). Settings saved by 0.7.x name readers that are gone; each maps to
 // the level that replaced it. Level 2 (your GPU checks v3) is not built yet, so marker-qwen lands on 1.
 const READERS = ["marker-v3", "marker-v3-cascade", "claude"];
 const LEGACY_READERS = { marker: "marker-v3", "marker-candidate": "marker-v3", "marker-qwen": "marker-v3",
                          "marker-cascade": "marker-v3-cascade", local: "claude" };
-const readerFor = (r) => (READERS.includes(r) ? r : LEGACY_READERS[r] ?? "claude");
+const readerFor = (r) => (READERS.includes(r) ? r : LEGACY_READERS[r] ?? "marker-v3");
 // Migrate a saved 0.7.x setting as soon as the worker starts, so the page's own toast (which reads the
 // setting directly) names the level that will actually run, even if the popup is never opened.
-api.storage.sync.get({ reader: "claude" }).then(({ reader }) => {
+api.storage.sync.get({ reader: "marker-v3" }).then(({ reader }) => {
   if (readerFor(reader) !== reader) api.storage.sync.set({ reader: readerFor(reader) });
 });
 

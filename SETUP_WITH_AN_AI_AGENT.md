@@ -20,10 +20,10 @@ SponsorSkip skips sponsor reads and other promotion in YouTube videos. It has tw
 
 | level | what reads the video | needs | cost |
 |---|---|---|---|
-| 1 | the free marker (seven small models, CPU only) | Python packages + the model files | free |
+| 1 | the free marker (seven small models, CPU only) (**the default**) | Python packages + the model files | free |
 | 2 | the free marker + a local GPU model checking it | not offered yet | — |
 | 3 | the free marker finds, Claude places each read's start and end | level 1 + Claude Code | a little of the person's Claude plan |
-| 4 | Claude reads the whole transcript (**the default**) | Claude Code | more of the person's Claude plan |
+| 4 | Claude reads the whole transcript (opt-in) | Claude Code | more of the person's Claude plan |
 
 Claude is used through the **person's own Claude Code login** (`claude -p` on this computer). There is no
 API key, and nothing is billed except the person's own Claude plan.
@@ -80,7 +80,8 @@ python -m pip install --user numpy torch transformers sentence-transformers mode
 
 A CPU-only PyTorch is enough; the marker never uses the GPU. **The model files are not in the
 repository** (about 400 MB). They go in `marker/data/production/` (`candidate.pt` plus the `models/`
-folder). Until they are published as a release download, only level 4 works from a fresh copy: tell the
+folder). Until they are published as a release download, level 1 (the default) cannot run from a fresh copy: the
+program falls back to SponsorBlock's community segments, and only level 4 actually reads the video. Tell the
 person this plainly rather than pretending level 1 is set up.
 
 ### 5. Start the program

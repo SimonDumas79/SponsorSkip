@@ -1,5 +1,5 @@
 ' Starts the SponsorSkip backend with no console window. Used by the
-' Startup-folder shortcut, so the backend is running whenever Simon is
+' Startup-folder shortcut, so the backend is running whenever you are
 ' logged in. Stop it from Task Manager (node.exe) or: npm start in a terminal.
 Set fso = CreateObject("Scripting.FileSystemObject")
 here = fso.GetParentFolderName(WScript.ScriptFullName)

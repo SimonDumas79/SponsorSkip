@@ -3,10 +3,10 @@
  * server.mjs, readWithAgents: Claude first by default):
  *
  *   claude: Claude Haiku through the Claude Code CLI (`claude -p`), on
- *           Simon's subscription. No API key, no tools, no MCP servers, no hooks.
+ *           the user's subscription. No API key, no tools, no MCP servers, no hooks.
  *           Reads the opening on its own first, so the start of a video is
  *           covered within seconds, then reads the whole transcript.
- *   local:  qwen3:8b on Simon's GPU through Ollama. Free, but measured well
+ *   local:  qwen3:8b on the user's GPU through Ollama. Free, but measured well
  *           below Claude on this task (2 of 6 reads found). The transcript is
  *           read in parts that fit its 16k context, the model is unloaded as
  *           soon as the video is done, it's skipped when the GPU is busy or
@@ -211,7 +211,7 @@ function runClaude(prompt, cwd) {
 }
 
 /**
- * Claude agent via the Claude Code CLI, on Simon's subscription.
+ * Claude agent via the Claude Code CLI, on the user's subscription.
  *
  * Two passes: a short one over the opening, then the whole transcript.
  *

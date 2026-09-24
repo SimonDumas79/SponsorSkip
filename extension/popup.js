@@ -1,11 +1,11 @@
 const api = globalThis.browser ?? globalThis.chrome;
-const DEFAULTS = { enabled: true, skipSelfpromo: true, reader: "claude" };
-// Simon's four levels (2026-09-22). Settings saved by 0.7.x name readers that are gone; each maps to
+const DEFAULTS = { enabled: true, skipSelfpromo: true, reader: "marker-v3" };
+// Four levels (2026-09-22); level 1 is the default and 2-4 are opt-in (2026-09-24). Settings saved by 0.7.x name readers that are gone; each maps to
 // the level that replaced it. Level 2 (your GPU checks v3) is not built yet, so marker-qwen lands on 1.
 const READERS = ["marker-v3", "marker-v3-cascade", "claude"];
 const LEGACY_READERS = { marker: "marker-v3", "marker-candidate": "marker-v3", "marker-qwen": "marker-v3",
                          "marker-cascade": "marker-v3-cascade", local: "claude" };
-const readerFor = (r) => (READERS.includes(r) ? r : LEGACY_READERS[r] ?? "claude");
+const readerFor = (r) => (READERS.includes(r) ? r : LEGACY_READERS[r] ?? "marker-v3");
 
 const $ = (id) => document.getElementById(id);
 const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;

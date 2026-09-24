@@ -5,7 +5,7 @@
  *
  * Listens on 127.0.0.1 only (default port 4790). Zero npm dependencies; needs
  * yt-dlp (`python -m pip install --user yt-dlp`) for captions. Agents
- * (agents.mjs): Claude through the Claude Code CLI on Simon's subscription,
+ * (agents.mjs): Claude through the Claude Code CLI on the user's subscription,
  * and the local GPU model through Ollama. No API keys. Claude reads first by
  * default; `?reader=local` puts the GPU first (see readWithAgents for why
  * that isn't the default).
@@ -95,7 +95,7 @@ function stage(id, step, extra = {}) {
   const was = partial.get(id) ?? { segments: [] };
   partial.set(id, { ...was, ...extra, step, label: STEPS[step] ?? step });
 }
-function analyze(id, { reader = "claude", fresh = false } = {}) {
+function analyze(id, { reader = "marker-v3", fresh = false } = {}) {
   // A reading is cached per video, but the popup lets you switch reader: a cached reading by a
   // different reader is not the answer that was asked for, so read again. (Old cache files and
   // SponsorBlock fallbacks carry no reader and are kept.)
@@ -147,7 +147,7 @@ function analyze(id, { reader = "claude", fresh = false } = {}) {
 }
 
 /**
- * Which agent reads, and in what order. Default "claude": Claude reads; the
+ * Which agent reads, and in what order. Reader "claude": Claude reads; the
  * local GPU model only if Claude can't run. "local": the GPU reads first, and
  * Claude re-reads when the local answer disagrees with SponsorBlock.
  *
@@ -155,7 +155,9 @@ function analyze(id, { reader = "claude", fresh = false } = {}) {
  * episodes, 6 sponsor reads between them): Claude Haiku found all 6, with
  * starts within 1-2 s. qwen3:8b found 2 of 6 whole in ~30k-character parts,
  * and with ~12k parts it found only the closing call-to-action lines, leaving
- * 40-60 s of each ad playing. Simon picked Claude-first on that evidence.
+ * 40-60 s of each ad playing. Claude-first was picked on that evidence. Since
+ * 2026-09-24 the free marker (level 1) is the program's default and every
+ * reader here is opt-in, because each one costs the user GPU time or Claude usage.
  */
 async function readWithAgents(id, video, reader) {
   const tried = [];
@@ -326,7 +328,7 @@ const server = http.createServer(async (req, res) => {
     }
     const asked = url.searchParams.get("reader");
     const reader = ["local", "marker", "marker-qwen", "marker-candidate",
-                    "marker-cascade", "marker-v3", "marker-v3-cascade"].includes(asked) ? asked : "claude";
+                    "marker-cascade", "marker-v3", "marker-v3-cascade", "claude"].includes(asked) ? asked : "marker-v3";
     return send(res, 200, await analyze(id, { reader, fresh: url.searchParams.get("fresh") === "1" }));
   } catch (error) {
     log("FAILED", url.pathname, String(error.message).slice(0, 200));

@@ -1,8 +1,8 @@
 # SponsorSkip
 
-A Chrome and Firefox extension that skips sponsor reads in YouTube videos. **Claude reads each video's entire transcript** to find them, on your Claude subscription through Claude Code, with no API key. It doesn't rely on crowd-sourced timestamps.
+SponsorSkip is a mix of multiple small, directed models used to mark and skip sponsored content on YouTube.
 
-Built 2026-09-18 for Simon. Personal and local: the program the extension talks to listens on `127.0.0.1` only.
+It is a Chrome and Firefox extension plus a small program on your own PC. **By default the free marker reads each video's transcript** (level 1: seven small models, CPU only, no language model, nothing leaves your PC). Every level above it is opt-in, because those are the ones that cost you something: your GPU's time, or your Claude plan through Claude Code (no API key). It doesn't rely on crowd-sourced timestamps. The program listens on `127.0.0.1` only.
 
 **Setting it up with an AI agent:** point your agent (Claude Code or similar) at `SETUP_WITH_AN_AI_AGENT.md`. Licence: GPL-3.0 for the code, CC BY-NC-SA 4.0 for the models (`NOTICE.md`). Privacy: `PRIVACY.md`.
 
@@ -30,12 +30,12 @@ Submissions use a private SponsorBlock user ID the extension creates once and ke
 
 ## Readers (popup setting)
 
-**0.8.0: the popup offers four levels** (Simon's decision, 2026-09-22):
+**The popup offers four levels** (0.8.0, 2026-09-22). **Level 1 is the default since 0.9.0 (2026-09-24); levels 2-4 are opt-in**, since each costs the user GPU time or Claude usage. A setting nobody chose falls to level 1; a level someone picked is kept.
 
 1. **Free marker** (`?reader=marker-v3`, `predict.py serve --tier v3`): candidate v3, seven detectors including the community SponsorBlock model, CPU only, about 35-60 s a video. v3 on holdout 4: 67.2% of ad time at 5.5 s of show lost per video.
-2. **Free marker + your GPU checks each find**: shown but disabled, not built yet. The design (v3 at a looser threshold, with qwen removing false finds) waits on Simon.
+2. **Free marker + your GPU checks each find**: shown but disabled, not built yet. The design (v3 at a looser threshold, with qwen removing false finds) is not decided yet.
 3. **Free marker finds, Claude places each edge** (`?reader=marker-v3-cascade`, `--tier v3-cascade`): v3's regions, then Claude Haiku gets only the lines around each one and says where it starts and ends. If Claude fails, our edge heads are used. Not yet measured on v3's regions (the cascade's 71.2% / 4.6 s was on v2's).
-4. **Claude reads the whole video** (`claude`): default.
+4. **Claude reads the whole video** (`claude`): the most accurate, and opt-in. It was the default until 0.9.0.
 
 A saved 0.7.x setting is rewritten once: `marker`, `marker-candidate` and `marker-qwen` become level 1, `marker-cascade` becomes level 3, `local` becomes level 4. The program still accepts the old reader names. A cached reading is only reused for the reader that made it. The rest of this section describes the 0.7.x readers, kept for the record.
 

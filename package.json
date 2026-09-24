@@ -1,9 +1,9 @@
 {
   "name": "sponsorskip",
-  "version": "0.7.0",
+  "version": "0.9.0",
   "private": true,
   "license": "GPL-3.0-only",
-  "description": "Chrome and Firefox extension that skips YouTube sponsor reads: Claude reads the whole transcript through Claude Code.",
+  "description": "A mix of multiple small, directed models used to mark and skip sponsored content on YouTube.",
   "type": "module",
   "scripts": {
     "start": "node server/server.mjs",
