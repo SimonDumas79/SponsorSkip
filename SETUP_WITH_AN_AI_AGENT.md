@@ -22,17 +22,20 @@ SponsorSkip skips sponsor reads and other promotion in YouTube videos. It has tw
 |---|---|---|---|
 | 1 | the free marker (seven small models, CPU only) (**the default**) | Python packages + the model files | free |
 | 2 | the free marker + a local GPU model checking it | not built yet; not shown in the popup | — |
-| 3 | the free marker finds, Claude places each read's start and end | level 1 + Claude Code | a little of the person's Claude plan |
-| 4 | Claude reads the whole transcript (opt-in) | Claude Code | more of the person's Claude plan |
+| 3 | the free marker finds, their AI places each read's start and end | level 1 + their AI | a little of their AI plan |
+| 4 | their AI reads the whole transcript (opt-in) | their AI | more of their AI plan |
 
-Claude is used through the **person's own Claude Code login** (`claude -p` on this computer). There is no
-API key, and nothing is billed except the person's own Claude plan.
+**Their AI** is whichever they pick in the popup under **Manage AI model**: Claude Code (the default choice),
+Codex CLI, Gemini CLI, Ollama (free, stays on the PC), an OpenAI-compatible API with their own key (billed
+per token), or a custom command. Only Claude Haiku's accuracy has been measured. Level 1 needs no AI at all,
+so skip this whole question if they only want the default. A custom command is set only by editing
+`ai-config.json` by hand; never put one there without showing them exactly what it runs.
 
 ## Rules while you work
 
 - **Ask before installing anything**, and say what it is and how big. Python + PyTorch for level 1 is
   several GB.
-- **Never log in for the person.** Claude Code sign-in and browser steps are theirs. Tell them exactly
+- **Never log in for the person.** Their AI's sign-in, any API key, and the browser steps are theirs. Tell them exactly
   what to click.
 - **Never submit anything to SponsorBlock.** The extension's "Help SponsorBlock" card is for people only.
   SponsorBlock bans automated submissions.
@@ -46,11 +49,12 @@ API key, and nothing is billed except the person's own Claude plan.
 ```sh
 node --version          # need 18 or newer (fetch is built in)
 python --version        # need 3.10 or newer (only for yt-dlp, and for levels 1 and 3)
-claude --version        # Claude Code, needed for levels 3 and 4
+claude --version        # only if they want Claude Code for levels 3 and 4 (or codex / gemini / ollama)
 ```
 
-If `claude` is missing, point the person to https://claude.com/claude-code. Once it is installed,
-they run `claude` once and log in. Wait for them to confirm before going on.
+Ask whether they want levels 3 and 4 at all, and with which AI. If they pick a CLI that is missing, point
+them to its install page (Claude Code: https://claude.com/claude-code); they run it once and log in. Wait
+for them to confirm before going on. After step 6 they pick it under **Manage AI model** and press **Test it**.
 
 ### 2. Get the code
 
@@ -100,11 +104,11 @@ next start). The files are CC BY-NC-SA 4.0 (`NOTICE.md`).
 Check it:
 
 ```sh
-curl http://127.0.0.1:4790/health
+curl -H "x-sponsorskip: 1" http://127.0.0.1:4790/health
 ```
 
-Expect `{"ok":true,"agents":[...]}`. The `claude-haiku (Claude Code)` entry must say `"ready":true` for
-levels 3 and 4. If the port is taken, stop the other program. The extension always calls 4790.
+Expect `{"ok":true,...}` (without the header the program answers 403 on purpose: only the extension may
+use it). For levels 3 and 4, the entry marked `"yourAI":true` must say `"ready":true`. If the port is taken, stop the other program. The extension always calls 4790.
 
 ### 6. Load the extension (the person does this, you guide them)
 
@@ -144,7 +148,8 @@ the most accurate. Level 1 is free and never leaves the computer. Readings are c
 |---|---|
 | nothing appears over the player | reload the extension; check `/health`; check that `backend.log` shows a line for the video |
 | "couldn't fetch captions" | `python -m pip install --user --upgrade yt-dlp`; if the log says 429, YouTube is rate-limiting, so wait an hour |
-| level 3 or 4 falls back to SponsorBlock | run `claude` in a terminal; the person may need to log in again or has hit their plan's limit |
+| level 3 or 4 falls back to SponsorBlock | press **Test it** under Manage AI model; run their AI's CLI in a terminal; they may need to log in again or have hit their plan's limit |
+| everything answers 403 after an update | the extension is an older build without the `x-sponsorskip` header: reload it |
 | `/health` does not answer | the program is not running: step 5 |
 | the video has no English captions | SponsorSkip uses SponsorBlock's answer for it; this is expected |
 

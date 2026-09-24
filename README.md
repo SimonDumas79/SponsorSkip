@@ -2,19 +2,33 @@
 
 SponsorSkip is a mix of multiple small, directed models used to mark and skip sponsored content on YouTube.
 
-It is a Chrome and Firefox extension plus a small program on your own PC. **By default the free marker reads each video's transcript** (level 1: seven small models, CPU only, no language model, nothing leaves your PC). Every level above it is opt-in, because those are the ones that cost you something: your GPU's time, or your Claude plan through Claude Code (no API key). It doesn't rely on crowd-sourced timestamps. The program listens on `127.0.0.1` only.
+It is a Chrome and Firefox extension plus a small program on your own PC. **By default the free marker reads each video's transcript** (level 1: seven small models, CPU only, no language model, nothing leaves your PC). Every level above it is opt-in, because those are the ones that cost you something: your GPU's time, or the plan of whichever AI you pick (Claude Code, Codex, Gemini, Ollama, or an API). It doesn't rely on crowd-sourced timestamps. The program listens on `127.0.0.1` only.
 
 The level-1 model files (about 200 MB, CC BY-NC-SA 4.0) are not in the repository: the program downloads them from the GitHub release named in `models.json` the first time it starts, and checks them against its sha256 (`server/models.mjs`). The first level-1 reading also fetches about 1 GB of base models from Hugging Face.
 
-**Setting it up with an AI agent:** point your agent (Claude Code or similar) at `SETUP_WITH_AN_AI_AGENT.md`. Licence: GPL-3.0 for the code, CC BY-NC-SA 4.0 for the models (`NOTICE.md`). Privacy: `PRIVACY.md`.
+**Setting it up with an AI agent:** point your AI agent (Claude Code, Codex, Gemini CLI or similar) at `SETUP_WITH_AN_AI_AGENT.md`. Licence: GPL-3.0 for the code, CC BY-NC-SA 4.0 for the models (`NOTICE.md`). Privacy: `PRIVACY.md`.
 
 ## How it works
 
 1. **The extension** (`extension/`, one codebase, Manifest V3, Chrome and Firefox) watches YouTube. When a video opens, it asks the SponsorSkip program on this PC for the sponsor segments, then skips any the playhead enters, with an **Undo** button. It stays still during YouTube's own ads. The popup shows the connection, what was found on the current video, settings (on/off, reader, and self-promotion skipping: merch, Patreon, memberships, on by default since 0.4.1), and the review list for SponsorBlock. While a video is being read the popup shows a **labelled progress strip**, one coloured bar per step, so a reading that finds nothing still visibly runs to a finish and says **"No sponsor reads in this video"** — a result, not a failure. **The popup updates itself while it is open**, so a reading that finishes with it up fills in on its own, and a review already under way is left alone. **Settings sync with your browser account.**
 2. **The program** (`server/`, Node, no npm dependencies, `127.0.0.1:4790`):
-   - `GET /quick/:id` answers at once, from the cache or else from [SponsorBlock](https://sponsor.ajay.app)'s community segments marked *interim*, so a sponsor read in the first minute is covered while Claude reads. The SponsorBlock lookup goes by hash prefix, so it never sees the video id.
-   - `GET /analyze/:id` fetches the English captions with **yt-dlp**, and **Claude Haiku** reads the transcript through the Claude Code CLI (`claude -p`, no tools, no MCP servers, no hooks). It reads **the first 7 minutes on their own first**, which comes back in about 10 s, so a sponsor read at the start is skipped straight away; then it reads the whole transcript, which is the answer. `GET /progress/:id` is what the page polls meanwhile. The segment edges are then snapped to exact caption lines using the words Claude copies for where each read starts and where the show resumes. Results are cached in `cache/<id>.json`, so a rewatch is instant and free. A video with no English captions falls back to SponsorBlock.
-   - Only browser extensions get answers (CORS is echoed for `chrome-extension://` and `moz-extension://` origins only), so no web page can make it spend your Claude usage.
+   - `GET /quick/:id` answers at once, from the cache or else from [SponsorBlock](https://sponsor.ajay.app)'s community segments marked *interim*, so a sponsor read in the first minute is covered while the reader works. The SponsorBlock lookup goes by hash prefix, so it never sees the video id.
+   - `GET /analyze/:id` fetches the English captions with **yt-dlp**, and the chosen reader reads the transcript: the free marker by default, or your AI (below) at levels 3 and 4. With Claude Code that is `claude -p` with no tools, no MCP servers and no hooks. It reads **the first 7 minutes on their own first**, which comes back in about 10 s, so a sponsor read at the start is skipped straight away; then it reads the whole transcript, which is the answer. `GET /progress/:id` is what the page polls meanwhile. The segment edges are then snapped to exact caption lines using the words the AI copies for where each read starts and where the show resumes. Results are cached in `cache/<id>.json`, so a rewatch is instant and free. A video with no English captions falls back to SponsorBlock.
+   - **Only the extension can use it** (0.10.1). Every route needs an `x-sponsorskip: 1` header, which a web page cannot send without a preflight, and preflights are answered for extension origins only; `<img>` and no-cors requests cannot carry it at all. So no website can start a reading or spend your AI plan. The settings routes can never set a custom command, and a stored API key is dropped when the provider or URL changes, so it is only ever sent where you entered it. **What remains:** another extension you have installed could still start readings on your plan. It could not run commands or redirect your key.
+
+
+**Your AI** (levels 3 and 4 only; the default needs none). Pick it in the popup under **Manage AI model**, then **Save** and **Test it**. The choice is kept by the program in `ai-config.json` (gitignored), not in the browser.
+
+| your AI | what it costs you | where the caption text goes |
+|---|---|---|
+| Claude Code (`claude -p`), the default choice, Haiku | your Claude plan, no key | Anthropic |
+| Codex CLI (`codex exec`, read-only sandbox) | your ChatGPT plan or OpenAI login | OpenAI |
+| Gemini CLI (`gemini -p`) | your Google account | Google |
+| Ollama (local, default qwen3:8b) | free, your GPU or CPU | nowhere: it stays on your PC |
+| a custom command (prompt on stdin, answer on stdout) | whatever that command costs | wherever that command sends it |
+| an OpenAI-compatible API (URL + model + your key) | billed per token by that provider | that URL |
+
+Only Claude Haiku's accuracy has been measured; the popup says so for every other choice. Codex and Gemini are wired in but untested. **A custom command can only be set by editing `ai-config.json` by hand**; the popup shows it read-only, so nothing that talks to the program can make it run a command.
 
 **Why Claude signs in through Claude Code rather than in the browser:** Anthropic doesn't offer a Claude sign-in to third-party extensions, and reusing the claude.ai browser session would break the consumer terms. Claude Code is Anthropic's own client and runs on your subscription, so it is the "log in with Claude" here. Do it once per PC.
 
@@ -32,7 +46,7 @@ Submissions use a private SponsorBlock user ID the extension creates once and ke
 
 ## Readers (popup setting)
 
-**The popup offers four levels** (0.8.0, 2026-09-22). **Level 1 is the default since 0.9.0 (2026-09-24); levels 2-4 are opt-in**, since each costs the user GPU time or Claude usage. A setting nobody chose falls to level 1; a level someone picked is kept.
+**The popup offers four levels** (0.8.0, 2026-09-22). **Level 1 is the default since 0.9.0 (2026-09-24); levels 2-4 are opt-in**, since each costs the user GPU time or AI usage. A setting nobody chose falls to level 1; a level someone picked is kept.
 
 1. **Free marker** (`?reader=marker-v3`, `predict.py serve --tier v3`): candidate v3, seven detectors including the community SponsorBlock model, CPU only, about 35-60 s a video. v3 on holdout 4: 67.2% of ad time at 5.5 s of show lost per video.
 2. **Free marker + your GPU checks each find**: not built yet, and not shown in the popup since 0.9.1 (which also drops the level numbers from the popup; they stay here and in the code). The design (v3 at a looser threshold, with qwen removing false finds) is not decided yet.
@@ -78,7 +92,7 @@ The extension was tested in Firefox 156 on the first episode: it connected, load
 
 ## Install (once per PC)
 
-1. **Claude Code**, installed and logged in with your Claude account (run `claude` once).
+1. **Optional, for levels 3 and 4 only: your AI.** Sign in to its CLI (Claude Code, Codex, Gemini), or set up Ollama or an API key, then pick it under **Manage AI model** in the popup.
 2. **yt-dlp**: `python -m pip install --user yt-dlp`. Keep it current with `--upgrade`, since YouTube keeps changing.
 3. **The program**: double-click `start-hidden.vbs` (no window), or `npm start`. To start it at login, put a shortcut to `start-hidden.vbs` in `shell:startup` (the desktop already has one).
 4. **The extension**:
