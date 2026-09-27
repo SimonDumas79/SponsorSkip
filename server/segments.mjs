@@ -130,7 +130,14 @@ function lineOf(lines, quote, around, window) {
  * the read begins, and `resumeQuote` (the first words after it) moves the end
  * to the line where the show resumes. Each bound moves at most `window`
  * seconds, and a segment never shrinks below MIN_S.
+ *
+ * An end the resume quote could not confirm is also capped at UNCONFIRMED_CAP_S
+ * (Simon, 2026-09-26). Level 4's worst losses were runaway ends (575 s of show
+ * for one read on holdout 5). A flat 180 s cap would clip ~5% of real ad time,
+ * since 23 of 558 labelled reads run longer; on holdout 4 this rule changed no
+ * real read (marker/level4_cap.py, README "Level 4's end cap").
  */
+export const UNCONFIRMED_CAP_S = 180;
 export function snapStarts(segments, transcript, window = 15) {
   const lines = transcript.map((l) => ({ start: l.start, text: norm(l.text) }));
   return segments.map((seg) => {
@@ -139,6 +146,7 @@ export function snapStarts(segments, transcript, window = 15) {
     if (s !== null && s < end - MIN_S) start = s;
     const e = lineOf(lines, seg.resumeQuote, seg.end, window);
     if (e !== null && e > start + MIN_S) end = e;
+    else if (end - start > UNCONFIRMED_CAP_S) end = start + UNCONFIRMED_CAP_S;
     return { ...seg, start, end };
   });
 }

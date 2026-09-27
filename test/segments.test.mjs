@@ -121,6 +121,18 @@ test("snapStarts also moves the end to where the show resumes", () => {
   assert.deepEqual([s.start, s.end], [100, 136]);
 });
 
+test("snapStarts caps a long segment at 180 s only when its end is unconfirmed", () => {
+  const transcript = [
+    { start: 100, text: "This video is sponsored by Acme." },
+    { start: 330, text: "Okay, back to the question of scaling." },
+  ];
+  const seg = { start: 100, end: 330, quote: "This video is sponsored by Acme", category: "sponsor" };
+  assert.equal(snapStarts([{ ...seg, resumeQuote: "never said on screen" }], transcript)[0].end, 280, "unconfirmed: capped");
+  assert.equal(snapStarts([{ ...seg, resumeQuote: null }], transcript)[0].end, 280, "no resume quote: capped");
+  assert.equal(snapStarts([{ ...seg, resumeQuote: "Okay, back to the question of scaling" }], transcript)[0].end, 330, "confirmed: kept");
+  assert.equal(snapStarts([{ ...seg, end: 250, resumeQuote: null }], transcript)[0].end, 250, "under the cap: kept");
+});
+
 test("chunkTranscript: parts stay under the size, overlap, and cover every line", async () => {
   const { chunkTranscript } = await import("../server/agents.mjs");
   const transcript = Array.from({ length: 600 }, (_, i) => ({ start: i * 5, text: "x".repeat(92) })); // ~100 chars/line, 50 min

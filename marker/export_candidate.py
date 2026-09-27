@@ -165,7 +165,7 @@ def build() -> int:
     return 0
 
 
-def add_v3() -> int:
+def add_v3(dropout: float | None = None) -> int:
     """Add candidate v3 to the saved bundle: a context model that also reads the community model.
 
     The same fit candidate.py --sbml grades: the six pooled out-of-fold streams plus the community
@@ -199,6 +199,17 @@ def add_v3() -> int:
                          + [context_features(U, sb[unseen]), U.X[:, extra_cols]])
     print(f"v3 context model: {U.videos} pooled videos after the community model's training, "
           f"{FU.shape[1]} features", flush=True)
+    if dropout is not None:
+        # Pre-registration 5's challenger (dropout_challenger.py fixed its thresholds on CV first). Saved
+        # beside the served bundle, never into it, so level 1 is unchanged until holdout 6 decides.
+        ctx = fit_stage2(FU, U.y.astype(np.float32), hidden=32, seed=0, dropout=dropout)
+        fixed = json.loads((DATA / "dropout_thresholds.json").read_text(encoding="utf-8"))
+        assert fixed["dropout"] == dropout, "dropout_thresholds.json was fixed for a different dropout"
+        th = {5: float(fixed["thresholds"]["B5"]), 10: float(fixed["thresholds"]["B10"])}
+        path = OUT.parent / "v3_dropout.pt"
+        torch.save({"context": stage_state(ctx), "context_inputs": FU.shape[1], "thresholds": th, "dropout": dropout}, path)
+        print(f"saved the dropout {dropout} challenger to {path} (thresholds B=5 {th[5]:.5f}, B=10 {th[10]:.5f})")
+        return 0
     ctx3 = fit_stage2(FU, U.y.astype(np.float32), hidden=32, seed=0)
     oof3 = np.load(DATA / "stack_sbml_oof_s0.npy")[1]
     g3 = graded(sweep_fine(oof3, U, ((p_start + fs_oof) / 2)[unseen], ((p_end + fe_oof) / 2)[unseen]), U)
@@ -315,10 +326,14 @@ def main() -> int:
                     help="the same grade with the fine-tuned streams recomputed by the saved checkpoints")
     ap.add_argument("--add-v3", action="store_true",
                     help="add candidate v3 (+ the community model) to the saved bundle")
+    ap.add_argument("--add-v3-dropout", type=float, metavar="P",
+                    help="pre-registration 5: save v3 refit with this stacking dropout to v3_dropout.pt (not the bundle)")
     ap.add_argument("--verify-v3", metavar="SET", help="score a fresh set through the bundle's v3")
     args = ap.parse_args()
     if args.add_v3:
         return add_v3()
+    if args.add_v3_dropout is not None:
+        return add_v3(args.add_v3_dropout)
     if args.verify_v3:
         return verify_v3(args.verify_v3)
     if args.from_checkpoints:

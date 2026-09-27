@@ -250,3 +250,32 @@ our heads. Level 4: 3 of 46 reads failed (Claude killed at ~240 s); its worst lo
 (0-637 s for a 65 s read), which the labeller's 180 s cap would have stopped; not patched on this set.
 Pre-registration 3's decision: the cascade (H) does not beat the candidate (C) on this set; it does not ship.
 CPU seconds per video (5 videos, 4-79 min): free 10-12, v2 18-62, v3 22-72.
+
+## Pre-registration 5: holdout 6 (written 2026-09-26, before holdout 6 is built)
+
+**Set.** Holdout 6 is every caption file whose channel appears in none of `examples.jsonl`,
+`examples_tail.jsonl`, `examples_holdout2.jsonl` to `examples_holdout5.jsonl`, `examples_channels.jsonl`
+or `examples_negatives.jsonl`. It is built once the crawl has 40 or more such videos and graded once,
+with SponsorBlock's sponsor + selfpromo labels. End-of-video plugs count as ad time (Simon, 2026-09-24).
+
+**Graded, all fixed before the set exists:**
+
+| | system | fixed values |
+|---|---|---|
+| D | v3 + chapters (level 1, as served) | `candidate.pt` v3 thresholds |
+| D2 | **challenger: v3 with dropout 0.5 in the stacking step**, otherwise identical (same 160 videos, same streams, same edge heads) | `data/dropout_thresholds.json`: B = 5 0.99945, B = 10 0.99611; model `production/v3_dropout.pt` |
+| S | self-promo path beside v3 (`selfpromo.pt`, `selfpromo_rule.json`), graded on Claude's category labels for holdout 6 | the shipped rule |
+| I | level 4 as served since 2026-09-26: whole transcript, with the unconfirmed-end cap (180 s, `segments.mjs`) | none; the uncapped answer is reported beside it from the same calls |
+
+**Decision rules (written now):**
+- **D2 replaces D** only if, at B = 10 (the served budget), it skips more ad time **and** loses no more
+  than 0.5 s more show per video **and** puts no more videos over 60 s. Otherwise v3 stays. B = 5 is reported, not decided on.
+- **The cap stays** unless, on holdout 6, it removes more real ad time than the show it saves.
+- **S** is reported against its CV number (28.6% of self-promo read time at 1.9 s). Nothing is decided on it here.
+
+**What CV says about D2 before the grade (`dropout_challenger.py`, the 160 videos v3 is trained on, seeds 0-2).**
+It does NOT reproduce the enlarged pool's result, where dropout 0.5 won at B = 5. Here it LOSES at B = 5
+(52.6 / 54.1 / 51.0% vs v3's 60.7 / 55.5 / 59.3%, show 4.5-4.7 s vs 4.8-5.0 s) and gains a little at
+B = 10 (67.4 / 67.7 / 68.1% vs 64.6 / 66.3 / 67.0%, show 7.5 / 8.3 / 8.8 s vs 7.1 / 8.3 / 7.4 s), mostly
+by skipping more show. It is registered anyway at Simon's call; the rule above means a win bought only
+with lost show does not ship.
