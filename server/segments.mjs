@@ -135,10 +135,14 @@ function lineOf(lines, quote, around, window) {
  * (Simon, 2026-09-26). Level 4's worst losses were runaway ends (575 s of show
  * for one read on holdout 5). A flat 180 s cap would clip ~5% of real ad time,
  * since 23 of 558 labelled reads run longer; on holdout 4 this rule changed no
- * real read (marker/level4_cap.py, README "Level 4's end cap").
+ * real read (marker/level4_cap.py, README "Level 4's end cap"). If the cut would
+ * leave END_SLIVER_S or less of the video, the skip runs to the end instead
+ * (Simon, 2026-09-26): of 494 labelled videos, 26 end on a read, all <= 160 s,
+ * so a capped skip that near the end is an outro, not the show.
  */
 export const UNCONFIRMED_CAP_S = 180;
-export function snapStarts(segments, transcript, window = 15) {
+export const END_SLIVER_S = 30;
+export function snapStarts(segments, transcript, window = 15, duration = null) {
   const lines = transcript.map((l) => ({ start: l.start, text: norm(l.text) }));
   return segments.map((seg) => {
     let { start, end } = seg;
@@ -146,7 +150,10 @@ export function snapStarts(segments, transcript, window = 15) {
     if (s !== null && s < end - MIN_S) start = s;
     const e = lineOf(lines, seg.resumeQuote, seg.end, window);
     if (e !== null && e > start + MIN_S) end = e;
-    else if (end - start > UNCONFIRMED_CAP_S) end = start + UNCONFIRMED_CAP_S;
+    else if (end - start > UNCONFIRMED_CAP_S) {
+      end = start + UNCONFIRMED_CAP_S;
+      if (Number.isFinite(duration) && duration - end <= END_SLIVER_S) end = duration;
+    }
     return { ...seg, start, end };
   });
 }

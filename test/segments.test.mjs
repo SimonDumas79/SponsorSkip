@@ -133,6 +133,14 @@ test("snapStarts caps a long segment at 180 s only when its end is unconfirmed",
   assert.equal(snapStarts([{ ...seg, end: 250, resumeQuote: null }], transcript)[0].end, 250, "under the cap: kept");
 });
 
+test("a capped skip that would leave 30 s or less of the video runs to the end", () => {
+  const transcript = [{ start: 100, text: "This video is sponsored by Acme." }];
+  const seg = { start: 100, end: 330, quote: "This video is sponsored by Acme", resumeQuote: null, category: "sponsor" };
+  assert.equal(snapStarts([seg], transcript, 15, 305)[0].end, 305, "25 s left after the cap: skip to the end");
+  assert.equal(snapStarts([seg], transcript, 15, 340)[0].end, 280, "60 s left after the cap: capped as usual");
+  assert.equal(snapStarts([seg], transcript)[0].end, 280, "no duration known: capped as usual");
+});
+
 test("chunkTranscript: parts stay under the size, overlap, and cover every line", async () => {
   const { chunkTranscript } = await import("../server/agents.mjs");
   const transcript = Array.from({ length: 600 }, (_, i) => ({ start: i * 5, text: "x".repeat(92) })); // ~100 chars/line, 50 min

@@ -33,7 +33,7 @@ async function one(file) {
   try {
     const { text, costUsd, parts, failed } = await readAI(video);
     const raw = parseSegments(text, video.lengthSeconds);
-    const segments = mergeOverlaps(snapStarts(raw, video.transcript));
+    const segments = mergeOverlaps(snapStarts(raw, video.transcript, 15, video.lengthSeconds));
     // raw: before snapping, with the quotes, so an end-cap rule can ask whether the resume quote was found.
     rec = { videoID: caps.videoID, segments, raw, costUsd, parts, failed: failed ?? null };
   } catch (e) {

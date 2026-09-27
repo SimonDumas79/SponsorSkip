@@ -265,7 +265,7 @@ with SponsorBlock's sponsor + selfpromo labels. End-of-video plugs count as ad t
 | D | v3 + chapters (level 1, as served) | `candidate.pt` v3 thresholds |
 | D2 | **challenger: v3 with dropout 0.5 in the stacking step**, otherwise identical (same 160 videos, same streams, same edge heads) | `data/dropout_thresholds.json`: B = 5 0.99945, B = 10 0.99611; model `production/v3_dropout.pt` |
 | S | self-promo path beside v3 (`selfpromo.pt`, `selfpromo_rule.json`), graded on Claude's category labels for holdout 6 | the shipped rule |
-| I | level 4 as served since 2026-09-26: whole transcript, with the unconfirmed-end cap (180 s, `segments.mjs`) | none; the uncapped answer is reported beside it from the same calls |
+| I | level 4 as served since 2026-09-26: whole transcript, with the unconfirmed-end cap (180 s, `segments.mjs`; a cut leaving 30 s or less of the video skips to the end) | none; the uncapped answer is reported beside it from the same calls |
 
 **Decision rules (written now):**
 - **D2 replaces D** only if, at B = 10 (the served budget), it skips more ad time **and** loses no more

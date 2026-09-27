@@ -167,7 +167,7 @@ async function readWithAgents(id, video, reader) {
   // Merge again after snapping: snapStarts moves edges onto caption lines, so
   // two near-identical readings of one sponsor read (the opening pass and the
   // full read) can end up overlapping only once their edges have been snapped.
-  const clean = (text) => mergeOverlaps(snapStarts(parseSegments(text, video.lengthSeconds), video.transcript));
+  const clean = (text) => mergeOverlaps(snapStarts(parseSegments(text, video.lengthSeconds), video.transcript, 15, video.lengthSeconds));
   const base = { videoId: id, title: video.title, channel: video.channel, transcriptLines: video.transcript.length, reader };
 
   async function viaLocal() {
