@@ -14,9 +14,6 @@ its own window is rejected.
 Claude window. A miss costs a whole sponsor read played at full volume. Those are
 not the same size of mistake, so they are not scored the same way.
 
-The full explanation, with diagrams:
-<https://claude.ai/artifact/AxjiintXBAVa4rbeyfX2aN>
-
 ## Running it, in order
 
 ```bash

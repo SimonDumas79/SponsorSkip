@@ -16,7 +16,12 @@ SponsorSkip collects nothing. There is no account, no analytics and no server of
   caption text nowhere.
 - **Only if you choose to submit a segment to SponsorBlock** in the "Help SponsorBlock" card: that
   segment, the video ID and a private SponsorBlock user ID stored in your browser go to SponsorBlock.
-  Nothing is ever submitted automatically.
+  Nothing is ever submitted automatically. That private ID lives in the browser's *synced* extension
+  storage, so a browser signed in to a Google or Firefox account uploads it along with your other
+  extension settings.
+- **Model downloads, once:** the first time the program starts it fetches the level-1 model files from
+  this project's GitHub release, and the first level-1 reading fetches the base models it builds on from
+  Hugging Face. No video data is sent either way.
 
 **API keys:** SponsorSkip needs no API key. If you choose the API-endpoint option, the key you enter is
 stored only in `ai-config.json` on your computer, is sent only to the URL you entered, and is never shown
@@ -24,4 +29,6 @@ back in the extension or uploaded anywhere else. Changing the provider or the UR
 
 **What is stored:** your settings in your browser's extension storage, and your AI choice in
 `ai-config.json` on your computer; each video's reading in the
-`cache/` folder on your computer, and a log line per reading in `backend.log`. Delete either at any time.
+`cache/` folder on your computer, and a log line per reading in `backend.log`. Both of those name the
+videos you watched (id, title, channel), so together they are a plain-text watch history on your own
+disk. Delete either at any time.

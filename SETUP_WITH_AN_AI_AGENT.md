@@ -140,9 +140,9 @@ curl "http://127.0.0.1:4790/analyze/<videoId>?reader=claude"
 
 ### 8. Choosing a level
 
-The person picks it in the extension's popup (click the SponsorSkip icon). Level 4 is the default and
-the most accurate. Level 1 is free and never leaves the computer. Readings are cached per video in
-`cache/`, and switching level reads the video again.
+The person picks it in the extension's popup (click the SponsorSkip icon). Level 1 (the free marker) is
+the default: free, and nothing leaves the computer. Level 4 is the most accurate and uses their AI plan.
+Readings are cached per video in `cache/`, and switching level reads the video again.
 
 ## When something is wrong
 

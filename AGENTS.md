@@ -2,9 +2,10 @@
 
 *This file is for developers wiring a new model into the pipeline. To SET UP SponsorSkip for a person, read `SETUP_WITH_AN_AI_AGENT.md` instead.*
 
-SponsorSkip always runs the marker first. The marker is local, free, needs no network and no
-language model: it finds where the sponsor reads are. A model is optional and does exactly one job
-on top of that — saying where each read it found **starts and ends**.
+At levels 1 and 3, SponsorSkip runs the marker first. (Level 4, where the person's AI reads the whole
+transcript, is a different reader and not what this file is about.) The marker is local, free, needs no
+network and no language model: it finds where the sponsor reads are. A model is optional and does exactly
+one job on top of that — saying where each read it found **starts and ends**.
 
 That split is measured, not a guess. On 64 fresh videos from 64 channels:
 

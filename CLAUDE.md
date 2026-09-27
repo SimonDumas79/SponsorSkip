@@ -7,8 +7,8 @@
 **Claude drives, Simon conducts** (his call, 2026-09-21). Claude writes the code; Simon decides what gets built and in what order. Explain what each change does and what the numbers mean in plain words, and check direction with him before a step that changes the plan.
 
 - Run commands from the repo root: scripts open `marker/data/...` by relative paths.
-- `features.npz` holds `X` (rows x 395), `y`, `video`, `line`, `split`, `is_start`, `is_resume`, `category` ("sponsor", "selfpromo" or ""), `start_seconds`, `channel`, `feature_names`. Labels cover SponsorBlock `sponsor` AND `selfpromo`.
-- Three sets, channel-disjoint: `features.npz` (train/val, tuned by channel-grouped CV), `features_tail.npz` (holdout 1: graded once on 2026-09-21, now USED), `features_holdout2.npz` (holdout 2: fresh crawl videos).
+- `features.npz` holds `X` (rows x 397: 384 MiniLM meaning, 3 seam, 6 cues, 2 position, 2 description columns), `y`, `video`, `line`, `split`, `is_start`, `is_resume`, `category` ("sponsor", "selfpromo" or ""), `start_seconds`, `channel`, `feature_names`. Labels cover SponsorBlock `sponsor` AND `selfpromo`.
+- Eight channel-disjoint sets: `features.npz` (train/val, tuned by channel-grouped CV); the holdouts `features_tail.npz` (holdout 1), `features_holdout2.npz` to `features_holdout5.npz`; `features_channels.npz` (the three named channels); `features_negatives.npz` (sponsor-free videos). Holdouts 1 to 5 are USED (each graded once); holdout 6 is pre-registered and waits on the crawl.
 
 ## Measuring honestly
 
