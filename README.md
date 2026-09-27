@@ -88,8 +88,9 @@ The extension was tested in Firefox 156 on the first episode: it connected, load
 
 1. **Optional, for levels 3 and 4 only: your AI.** Sign in to its CLI (Claude Code, Codex, Gemini), or set up Ollama or an API key, then pick it under **Manage AI model** in the popup.
 2. **yt-dlp**: `python -m pip install --user yt-dlp`. Keep it current with `--upgrade`, since YouTube keeps changing.
-3. **The program**: double-click `start-hidden.vbs` (no window), or `npm start`. To start it at login, put a shortcut to `start-hidden.vbs` in `shell:startup`.
-4. **The extension**:
+3. **Levels 1 and 3, the free marker**: Python 3.10 or newer, then `python -m pip install --user numpy torch transformers sentence-transformers model2vec scikit-learn` (a CPU-only PyTorch is enough; the marker never uses the GPU). That is several GB once. The model files come by themselves at the program's first start (about 250 MB) and the first level-1 reading fetches its base models from Hugging Face (about 1 GB); until then level 1 falls back to SponsorBlock.
+4. **The program**: double-click `start-hidden.vbs` (no window), or `npm start`. To start it at login, put a shortcut to `start-hidden.vbs` in `shell:startup`.
+5. **The extension**:
    - **Chrome**: `chrome://extensions` → turn on **Developer mode** → **Load unpacked** → pick the `extension` folder.
    - **Firefox**: `about:debugging#/runtime/this-firefox` → **Load Temporary Add-on** → pick `extension/manifest.json`. This lasts until Firefox restarts. For a permanent install without Mozilla signing, use Firefox Developer Edition or Nightly: set `xpinstall.signatures.required` to `false` in `about:config`, zip the `extension` folder's contents, and install the zip from `about:addons` → gear → **Install Add-on From File**. (On regular Firefox a permanent install needs the add-on signed by Mozilla: `npx web-ext sign --channel=unlisted` with addons.mozilla.org API keys.)
    - Firefox may ask to allow the extension on youtube.com and 127.0.0.1. Allow both.
