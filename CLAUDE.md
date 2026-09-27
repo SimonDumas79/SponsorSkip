@@ -18,6 +18,6 @@
 - Language-model answers (qwen via Ollama) are recorded once (`data/confirm_verdicts*.jsonl`, `*.edges.jsonl`) and replayed; only rules that select over recorded answers can be scored that way.
 - Never leave qwen in VRAM: the scripts unload it when they finish.
 
-## Where things stand (2026-09-21)
+## Where things stand
 
-Holdout 1, once (78 videos, 87 reads): cue patterns 28.0% of ad time at 19.3 s lost show per video; marker alone 31.5% at 8.3 s; free tier (context model + edge heads) 49.6% at 9.9 s; qwen tier (judge + qwen confirm + qwen edges) 63.4% at 19.9 s. Details and holdout 2 in the vault's daily note for 2026-09-21.
+Holdouts are graded once each, and the results live in `marker/PREREGISTRATION.md` (results 1 to 4) with the full record in `marker/README.md`. Latest: holdout 5 (2026-09-24), level 1 (v3) 62.7% of ad time at 4.7 s of show lost per video. Holdout 6 is pre-registered (pre-registration 5) and not built yet.
