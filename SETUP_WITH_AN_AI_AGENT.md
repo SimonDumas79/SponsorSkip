@@ -77,7 +77,7 @@ YouTube changes often. When skipping stops working, **upgrading yt-dlp is the fi
 Skip this step if the person only wants level 4.
 
 ```sh
-python -m pip install --user numpy torch transformers sentence-transformers model2vec scikit-learn
+python -m pip install --user numpy torch transformers sentence-transformers model2vec scikit-learn requests
 ```
 
 A CPU-only PyTorch is enough; the marker never uses the GPU. **The model files are not in the

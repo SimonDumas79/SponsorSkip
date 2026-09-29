@@ -67,7 +67,7 @@ def import_their_code():
         sys.path.remove(str(SRC))
         theirs = {n: sys.modules.pop(n) for n in clashing if n in sys.modules}
         sys.modules.update(ours)
-        sys.modules["sbml_shared"] = their_shared
+    sys.modules["sbml_shared"] = their_shared
     return their_predict, their_preprocess, their_segment
 
 
