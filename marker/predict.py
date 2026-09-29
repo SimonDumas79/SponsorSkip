@@ -106,7 +106,7 @@ def export() -> None:
 
 class FreeTier:
     def __init__(self, path: Path = BUNDLE, device: str | None = None):
-        b = torch.load(path)
+        b = torch.load(path, weights_only=True, map_location="cpu")
         self.threshold = b["threshold"]
         self.marker = []
         for p in b["marker"]:

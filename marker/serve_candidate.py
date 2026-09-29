@@ -51,7 +51,7 @@ def ask_program(prompt: str, timeout: float = 60.0) -> dict | None:
 
 class Candidate:
     def __init__(self, path=DEFAULT, device: str | None = None):
-        b = torch.load(path, weights_only=False)
+        b = torch.load(path, weights_only=True, map_location="cpu")
         self.bundle_dir = path.parent
         self.order = b["order"]
         self.extra_cols = b["extra_cols"]
@@ -119,7 +119,7 @@ class Candidate:
         if self._bge is None:
             self._bge = {}
         if which not in self._bge:
-            ck = torch.load(self.bundle_dir / self.fine_tuned[which], weights_only=False)
+            ck = torch.load(self.bundle_dir / self.fine_tuned[which], weights_only=True, map_location="cpu")
             OPT.update(ck["opt"])
             opts = dict(ck["opt"])
             model = Scorer()
