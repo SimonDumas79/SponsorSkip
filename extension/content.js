@@ -73,7 +73,7 @@
     }
   }, 250);
 
-  // --- per video: SponsorBlock at once, then Claude's reading ---------------
+  // --- per video: SponsorBlock at once, then the chosen reader ----------------
   async function load(id, { fresh = false } = {}) {
     videoId = id;
     result = null;
@@ -96,7 +96,7 @@
     // function, so `reading = null` at its top threw and no video was ever sent to the program (0.7.0).
     const startToast = { "marker-v3": "SponsorSkip: the free marker is reading the transcript…",
                          "marker-v3-cascade": "SponsorSkip: the free marker is finding the reads, Claude places their edges…" };
-    if (settings.enabled) toast(startToast[settings.reader] ?? "SponsorSkip: Claude is reading the transcript…");
+    if (settings.enabled) toast(startToast[settings.reader] ?? "SponsorSkip: your AI is reading the transcript…");
     reading = { step: "captions", label: "Fetching captions", segments: [] };
     const analyzing = send({ type: "analyze", id, reader: settings.reader, fresh });
     // The reader works through the transcript in overlapping parts. Take each
@@ -136,9 +136,18 @@
     segments = pick(result);
     announce();
   }
+  // Who did the reading, for the toast. By the reader the program recorded, not by pattern-matching
+  // its source string: the free marker's string matched neither "claude" nor "GPU", so level 1's
+  // work was credited to SponsorBlock.
+  const READ_BY = {
+    "marker-v3": "the free marker",
+    "marker-v3-cascade": "the marker, edges placed by your AI",
+    claude: "your AI read the transcript",
+    local: "read on your GPU",
+  };
   function announce() {
     if (!settings.enabled) return;
-    const via = /claude/i.test(result.source) ? "Claude read the transcript" : /GPU/.test(result.source) ? "read on your GPU" : "SponsorBlock";
+    const via = result.source === "sponsorblock" ? "SponsorBlock" : READ_BY[result.reader] ?? "the marker";
     const n = segments.length;
     toast(n ? `SponsorSkip: ${n} to skip (${via})` : `SponsorSkip: nothing to skip (${via})`);
   }

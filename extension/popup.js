@@ -161,7 +161,7 @@ async function connection() {
   if (!h.ok) {
     $("conn-dot").className = "dot bad";
     $("conn-title").textContent = "Not connected on this PC";
-    $("conn-detail").textContent = "SponsorSkip needs its small program running here, signed in to Claude through Claude Code.";
+    $("conn-detail").textContent = "SponsorSkip needs its small program running here (level 1 needs no AI; the AI levels use whatever you set under Manage AI model).";
     $("setup").hidden = false;
     return;
   }
@@ -243,7 +243,7 @@ function renderVideo(tab, state) {
     : r.error
       ? r.error
       : r.interim
-        ? "Using SponsorBlock while Claude reads…"
+        ? "Using SponsorBlock while the reader works…"
         : r.partial
           ? `Reading… part ${r.part} of ${r.parts}, ${(r.segments ?? []).length} found so far`
           : `${r.source}${r.seconds ? `, ${r.seconds}s` : ""}${r.reason ? ` (${r.reason})` : ""}`;
