@@ -275,6 +275,10 @@ export function readMarker(id, video, root, { tier = "free", timeoutMs = MARKER_
     }, timeoutMs);
     child.stdout.on("data", (d) => (out += d));
     child.stderr.on("data", (d) => (err += d));
+    // Python can exit before it reads the transcript (torch missing, a Python under 3.10): the write
+    // below then fails with EPIPE, and an unhandled stdin error would exit the whole program. The
+    // "close" handler still reports the real cause from stderr. Reproduced at 2,000 lines.
+    child.stdin.on("error", () => {});
     child.on("error", (e) => {
       clearTimeout(timer);
       reject(e);
