@@ -100,6 +100,10 @@ next start). The files are CC BY-NC-SA 4.0 (`NOTICE.md`).
   `shell:startup` opens.
 - **macOS / Linux:** `npm start`, kept running in the background (a login item, launchd, or systemd
   user service, whichever the person prefers).
+- **What it costs while idle**, if the person asks: one Node process of about 55 MB of RAM and no CPU
+  (it only wakes for a request). It loads no model until a video is read; a level-1 reading runs a
+  Python process for about a minute, which exits and frees its memory when done. At most two
+  readings run at once.
 
 Check it:
 
