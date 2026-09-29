@@ -63,8 +63,6 @@ git clone https://github.com/SimonDumas79/SponsorSkip.git
 cd SponsorSkip
 ```
 
-(The repository is private while it is being prepared. If the clone fails, ask the person for access or a copy.)
-
 ### 3. Install yt-dlp (captions)
 
 ```sh
