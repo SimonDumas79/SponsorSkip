@@ -93,10 +93,32 @@ const STEPS = {
   markerCascade: "Found the reads, now placing their edges exactly",
   markerV3: "Reading with seven detectors (v3)",
   markerV3Cascade: "v3 found the reads, Claude is placing their edges",
+  queued: "Waiting for another reading to finish",
 };
 function stage(id, step, extra = {}) {
   const was = partial.get(id) ?? { segments: [] };
   partial.set(id, { ...was, ...extra, step, label: STEPS[step] ?? step });
+}
+
+// How many readings run at once. inFlight only dedupes per video: flicking through a playlist, or
+// any local process, used to start one yt-dlp and one Python (about 1 GB of PyTorch each), or two
+// Claude calls at level 4, per video, with nothing cancelled when the tab moved on. Two run, the
+// rest wait in order, and past a short queue a new one is refused rather than piled up.
+const MAX_RUNNING = 2;
+const MAX_WAITING = 10;
+let running = 0;
+const waiting = [];
+function takeSlot() {
+  if (running < MAX_RUNNING) {
+    running += 1;
+    return Promise.resolve();
+  }
+  if (waiting.length >= MAX_WAITING) return Promise.reject(new Error(`busy: ${running} reading, ${waiting.length} waiting`));
+  return new Promise((resolve) => waiting.push(resolve)).then(() => (running += 1));
+}
+function freeSlot() {
+  running -= 1;
+  waiting.shift()?.();
 }
 function analyze(id, { reader = "marker-v3", fresh = false } = {}) {
   // A reading is cached per video, but the popup lets you switch reader: a cached reading by a
@@ -110,37 +132,43 @@ function analyze(id, { reader = "marker-v3", fresh = false } = {}) {
   }
   if (inFlight.has(id)) return inFlight.get(id);
   const job = (async () => {
-    const started = Date.now();
-    log(id, `reading (reader ${reader}${fresh ? ", fresh" : ""})`);
-    stage(id, "captions");
-    let video;
+    stage(id, "queued");
+    await takeSlot();
     try {
-      video = await getTranscript(id);
-    } catch (e) {
-      // Couldn't fetch captions (rate limit, network, a YouTube change): fall
-      // back to SponsorBlock for now, and DON'T cache, so the next visit retries.
-      log(id, "FAILED captions:", String(e.message).slice(0, 200), "- serving SponsorBlock, not cached, retries next visit");
-      return { videoId: id, segments: await sponsorBlock(id).catch(() => []), source: "sponsorblock", reason: `couldn't fetch captions (${String(e.message).slice(0, 120)})`, retryLater: true };
+      const started = Date.now();
+      log(id, `reading (reader ${reader}${fresh ? ", fresh" : ""})`);
+      stage(id, "captions");
+      let video;
+      try {
+        video = await getTranscript(id);
+      } catch (e) {
+        // Couldn't fetch captions (rate limit, network, a YouTube change): fall
+        // back to SponsorBlock for now, and DON'T cache, so the next visit retries.
+        log(id, "FAILED captions:", String(e.message).slice(0, 200), "- serving SponsorBlock, not cached, retries next visit");
+        return { videoId: id, segments: await sponsorBlock(id).catch(() => []), source: "sponsorblock", reason: `couldn't fetch captions (${String(e.message).slice(0, 120)})`, retryLater: true };
+      }
+      let result;
+      if (!video.transcript) {
+        result = { videoId: id, title: video.title, segments: await sponsorBlock(id), source: "sponsorblock", reason: "no English captions" };
+      } else {
+        result = await readWithAgents(id, video, reader);
+      }
+      result.analyzedAt = new Date().toISOString();
+      result.seconds = Math.round((Date.now() - started) / 1000);
+      fs.writeFileSync(cachePath(id), JSON.stringify(result, null, 2));
+      log(
+        id,
+        `${result.source} ${result.segments.length} segment(s) in ${result.seconds}s`,
+        result.reason && `- ${result.reason}`,
+        result.channel && `| ${result.channel}: ${String(result.title ?? "").slice(0, 60)}`,
+      );
+      for (const t of result.tried ?? []) {
+        log(id, ` tried ${t.agent}: ${t.outcome}`, t.seconds && `(${t.seconds}s)`, t.costUsd && `$${t.costUsd}`);
+      }
+      return result;
+    } finally {
+      freeSlot();
     }
-    let result;
-    if (!video.transcript) {
-      result = { videoId: id, title: video.title, segments: await sponsorBlock(id), source: "sponsorblock", reason: "no English captions" };
-    } else {
-      result = await readWithAgents(id, video, reader);
-    }
-    result.analyzedAt = new Date().toISOString();
-    result.seconds = Math.round((Date.now() - started) / 1000);
-    fs.writeFileSync(cachePath(id), JSON.stringify(result, null, 2));
-    log(
-      id,
-      `${result.source} ${result.segments.length} segment(s) in ${result.seconds}s`,
-      result.reason && `- ${result.reason}`,
-      result.channel && `| ${result.channel}: ${String(result.title ?? "").slice(0, 60)}`,
-    );
-    for (const t of result.tried ?? []) {
-      log(id, ` tried ${t.agent}: ${t.outcome}`, t.seconds && `(${t.seconds}s)`, t.costUsd && `$${t.costUsd}`);
-    }
-    return result;
   })().finally(() => {
     inFlight.delete(id);
     partial.delete(id);
