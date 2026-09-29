@@ -336,10 +336,20 @@ async function post(req, res, url) {
   return send(res, 404, { error: "not found" });
 }
 
+// The program answers only when it was addressed by its own name. With DNS rebinding (a page on
+// evil.com:4790 whose name later resolves to 127.0.0.1) a web page's requests to the GET routes are
+// same-origin: no preflight to refuse, the x-sponsorskip header allowed, no Origin to check. Chrome's
+// private-network rules block most of that; Firefox's don't. The Host header is what tells them apart.
+const HOSTS = new Set([`127.0.0.1:${PORT}`, `localhost:${PORT}`]);
+
 const server = http.createServer(async (req, res) => {
-  const url = new URL(req.url, "http://localhost");
   res.origin = req.headers.origin ?? null;
+  let url;
   try {
+    if (!HOSTS.has(req.headers.host ?? "")) return send(res, 403, { error: "forbidden" });
+    // Inside the try on purpose: a request line that Node's parser accepts but the URL parser rejects
+    // ("GET http://a:b:c/") used to throw here unhandled and take the program down (reproduced).
+    url = new URL(req.url, "http://localhost");
     if (req.method === "OPTIONS") {
       // Firefox preflights the extension's requests. Answered for extension origins only.
       if (!(res.origin && EXTENSION_ORIGIN.test(res.origin))) return send(res, 403, { error: "forbidden" });
@@ -393,8 +403,8 @@ const server = http.createServer(async (req, res) => {
                     "marker-cascade", "marker-v3", "marker-v3-cascade", "claude"].includes(asked) ? asked : "marker-v3";
     return send(res, 200, await analyze(id, { reader, fresh: url.searchParams.get("fresh") === "1" }));
   } catch (error) {
-    log("FAILED", url.pathname, String(error.message).slice(0, 200));
-    send(res, 500, { error: error.message });
+    log("FAILED", url?.pathname ?? String(req.url).slice(0, 80), String(error.message).slice(0, 200));
+    send(res, url ? 500 : 400, { error: error.message });
   }
 });
 
