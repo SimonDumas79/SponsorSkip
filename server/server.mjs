@@ -7,8 +7,9 @@
  * yt-dlp (`python -m pip install --user yt-dlp`) for captions. Agents
  * (agents.mjs): Claude through the Claude Code CLI on the user's subscription,
  * or whatever AI the person picked in the popup (ai.mjs), and the local GPU
- * model through Ollama. The free marker (level 1) is the default; `?reader=local` puts the GPU first (see readWithAgents for why
- * that isn't the default).
+ * model through Ollama. The free marker (level 1, `marker-v3`) is the default; the popup's other
+ * levels are `marker-v3-cascade` (level 3), `claude` (level 4, the person's own AI) and `local`
+ * (the GPU first; see readWithAgents for why that isn't the default).
  * Results are cached per video in ./cache, so a rewatch costs nothing, and
  * every reading and every failure is appended to ./backend.log.
  *
@@ -18,8 +19,9 @@
  *                           community segments (hash-prefix lookup), marked
  *                           interim, so an early sponsor read is covered
  *                           while the agent works
- *   GET /analyze/:videoId   the agent's result (cached, or computed now).
- *                           ?reader=claude|local  ?fresh=1 ignores the cache.
+ *   GET /analyze/:videoId   the reader's result (cached, or computed now).
+ *                           ?reader=marker-v3|marker-v3-cascade|claude|local
+ *                           ?fresh=1 ignores the cache.
  *                           No English captions → SponsorBlock.
  *   GET /progress/:videoId  what the reader has found SO FAR, while /analyze
  *                           is still running. Claude reads the transcript in
@@ -440,5 +442,6 @@ server.listen(PORT, "127.0.0.1", () => {
   process.env.SPONSORSKIP_ASK_URL = `http://127.0.0.1:${PORT}/ai-ask`; // inherited by the marker's Python (level 3)
   process.env.SPONSORSKIP_ASK_TOKEN = ASK_TOKEN;
   console.log(`SponsorSkip backend on http://127.0.0.1:${PORT} (your AI: ${AGENTS.claude}; GPU: ${AGENTS.local})`);
-  ensureModels(root, log);
+  // test/server.test.mjs starts the program on a spare port to probe its door; it must not download.
+  if (!process.env.SPONSORSKIP_NO_MODELS) ensureModels(root, log);
 });
