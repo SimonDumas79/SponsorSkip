@@ -6,7 +6,7 @@ show around it. Claude, handed a window of numbered caption lines and asked for
 the first line of the read and the line where the show resumes, lands within
 1-2 s. qwen3 was only ever tested on yes/no edge questions ("does an ad begin
 here?"), which it answered with long tails. This script asks it the line-number
-question instead, the same one server/verify.mjs asks Claude.
+question instead, the same one the level-3 cascade asks Claude (serve_candidate.py's _model_edges).
 
 For every region a confirm_check.py run recorded, where qwen said yes or the
 marker was near-certain, it cuts a wider window (the region plus REACH lines

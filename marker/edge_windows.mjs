@@ -10,7 +10,7 @@
  * and the same question, so the comparison is like for like.
  *
  * NOT a unit test: it spends Claude usage, uses the GPU and fetches captions.
- * Run it deliberately: `node bench/edge-windows.mjs`. This is the harness to
+ * Run it deliberately: `node marker/edge_windows.mjs`. This is the harness to
  * score a trained detector against, so the numbers stay comparable.
  */
 import { spawn } from "node:child_process";

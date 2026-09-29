@@ -69,7 +69,7 @@ A saved 0.7.x setting is rewritten once: `marker`, `marker-candidate` and `marke
 
 Haiku read a 62-minute episode and placed one sponsor read at **1616 s instead of 3616 s** — it quoted the read correctly and mistyped the number, which appears nowhere in the prompt. That would skip a minute of the show and play the sponsor in full. The read sat 93% of the way through an 82,000-character prompt.
 
-So each read was handed over as a **window** instead (90 s before it, 60 s after, 43–51 caption lines), with the answer given as a **line index** rather than a timestamp — which makes an error of that kind structurally impossible. Run it with `node bench/edge-windows.mjs`.
+So each read was handed over as a **window** instead (90 s before it, 60 s after, 43–51 caption lines), with the answer given as a **line index** rather than a timestamp — which makes an error of that kind structurally impossible. Run it with `node marker/edge_windows.mjs`.
 
 | Reader, on a window | Found | Start error (median / worst) | Starts within 5 s | End error (median) | Per window |
 |---|---|---|---|---|---|
@@ -97,4 +97,4 @@ The extension was tested in Firefox 156 on the first episode: it connected, load
 
 ## Tests
 
-`npm test`: 29 offline checks, most of them of what decides a skip (reply parsing, clamping and merging, quote snapping at both edges, the 180 s limit and the end-of-video rule, caption file choice, transcript chunking and part splitting for the local reader).
+`npm test`: 24 offline checks: who the program answers (the header, the Host name, an extension origin on settings, a malformed request line, a bad video id), and what decides a skip (reply parsing, clamping and merging, quote snapping at both edges, the 180 s limit and the end-of-video rule, caption file choice, transcript chunking and part splitting for the local reader).
