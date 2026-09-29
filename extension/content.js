@@ -116,9 +116,17 @@
         toast(`SponsorSkip: ${segments.length} to skip so far, still reading…`);
       }
     }, 2000);
-    const full = await analyzing;
-    clearInterval(poll);
-    reading = null;
+    // The round-trip can reject (the worker restarted mid-read, the 600 s timeout): the poll and the
+    // progress strip must stop either way, or the popup shows a reading that never ends.
+    let full;
+    try {
+      full = await analyzing;
+    } catch (e) {
+      full = { ok: false, error: e?.message ?? String(e) };
+    } finally {
+      clearInterval(poll);
+      reading = null;
+    }
     if (videoId !== id) return;
     if (!full.ok) {
       if (settings.enabled) toast(`SponsorSkip: ${full.error}`);
