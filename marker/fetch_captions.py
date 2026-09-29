@@ -80,7 +80,9 @@ def fetch(video_id: str, timeout: float = 120.0) -> dict | None:
                 "-o", "%(id)s.%(ext)s",
                 f"https://www.youtube.com/watch?v={video_id}",
             ],
-            cwd=tmp, capture_output=True, text=True, timeout=timeout, creationflags=FLAGS,
+            # utf-8 explicitly: with the console default (cp1252) the first non-ASCII title fails inside
+            # the reader thread, run() never raises, and stdout comes back None.
+            cwd=tmp, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout, creationflags=FLAGS,
         )
         if proc.returncode != 0:
             err = (proc.stderr or "").strip()
