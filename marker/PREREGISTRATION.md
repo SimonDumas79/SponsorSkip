@@ -264,16 +264,16 @@ with SponsorBlock's sponsor + selfpromo labels. End-of-video plugs count as ad t
 |---|---|---|
 | D | v3 + chapters (level 1, as served) | `candidate.pt` v3 thresholds |
 | D2 | **challenger: v3 with dropout 0.5 in the stacking step**, otherwise identical (same 160 videos, same streams, same edge heads) | `data/dropout_thresholds.json`: B = 5 0.99945, B = 10 0.99611; model `production/v3_dropout.pt` |
-| G | **challenger: v3 with growth instead of the edge heads** — same detection (model, thresholds) as D; once a region is found, it grows outward line by line while the v3 stack's own score stays above a fixed bar, replacing the start/resume heads entirely (`marker/grow_sweep.py`, added 2026-10-02 after the Fireship video showed heads collapsing a 65 s read to 5 s) | same v3 thresholds as D (B = 5 0.9984, B = 10 0.9959); grow bar B = 5 0.98, B = 10 0.95 — fixed on the same 160 CV videos, chosen as the lowest bar that still clears the budget with headroom, not the loosest bar the rule alone would pick |
+| J | **challenger: v3 with growth instead of the edge heads** — same detection (model, thresholds) as D; once a region is found, it grows outward line by line while the v3 stack's own score stays above a fixed bar, replacing the start/resume heads entirely (`marker/grow_sweep.py`, added 2026-10-02 after the Fireship video showed heads collapsing a 65 s read to 5 s) | same v3 thresholds as D (B = 5 0.9984, B = 10 0.9959); grow bar B = 5 0.98, B = 10 0.95 — fixed on the same 160 CV videos, chosen as the lowest bar that still clears the budget with headroom, not the loosest bar the rule alone would pick |
 | S | self-promo path beside v3 (`selfpromo.pt`, `selfpromo_rule.json`), graded on Claude's category labels for holdout 6 | the shipped rule |
 | I | level 4 as served since 2026-09-26: whole transcript, with the unconfirmed-end cap (180 s, `segments.mjs`; a cut leaving 30 s or less of the video skips to the end) | none; the uncapped answer is reported beside it from the same calls |
 
 **Decision rules (written now):**
 - **D2 replaces D** only if, at B = 10 (the served budget), it skips more ad time **and** loses no more
   than 0.5 s more show per video **and** puts no more videos over 60 s. Otherwise v3 stays. B = 5 is reported, not decided on.
-- **G replaces D** under the same rule as D2 (more ad time, no more than 0.5 s more show, no more
-  videos over 60 s, at B = 10). If both D2 and G clear the rule, the one with more ad time ships;
-  a tie keeps D, since it needs no retrain. G and D2 can both lose to D.
+- **J replaces D** under the same rule as D2 (more ad time, no more than 0.5 s more show, no more
+  videos over 60 s, at B = 10). If both D2 and J clear the rule, the one with more ad time ships;
+  a tie keeps D, since it needs no retrain. J and D2 can both lose to D.
 - **The cap stays** unless, on holdout 6, it removes more real ad time than the show it saves.
 - **S** is reported against its CV number (28.6% of self-promo read time at 1.9 s). Nothing is decided on it here.
 
@@ -284,7 +284,7 @@ B = 10 (67.4 / 67.7 / 68.1% vs 64.6 / 66.3 / 67.0%, show 7.5 / 8.3 / 8.8 s vs 7.
 by skipping more show. It is registered anyway at Simon's call; the rule above means a win bought only
 with lost show does not ship.
 
-**What CV says about G before the grade (`marker/grow_sweep.py`, the same 160 videos, v3's own
+**What CV says about J before the grade (`marker/grow_sweep.py`, the same 160 videos, v3's own
 thresholds unchanged).** At B = 10: 67.3% of ad time at 6.3 s of show lost, over-60 1.2%, against D's
 64.6% at 7.1 s, over-60 1.9% — more ad time AND less show lost AND fewer over-cap videos, the only
 challenger so far to beat D on every axis on CV. At B = 5: 61.3% at 3.2 s, over-60 0.0%, against D's
