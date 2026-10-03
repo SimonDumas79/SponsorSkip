@@ -29,7 +29,7 @@
   // --- one small status line over the player --------------------------------
   let toastEl = null;
   let toastTimer = null;
-  function toast(text, action) {
+  function toast(text, ...actions) {
     const host = document.getElementById("movie_player") || document.body;
     if (!toastEl || !host.contains(toastEl)) {
       toastEl = document.createElement("div");
@@ -38,7 +38,7 @@
       host.appendChild(toastEl);
     }
     toastEl.textContent = text;
-    if (action) {
+    for (const action of actions) {
       const b = document.createElement("button");
       b.textContent = action.label;
       b.style.cssText = "margin-left:10px;background:#3ea6ff;color:#000;border:0;border-radius:4px;padding:2px 8px;cursor:pointer;font:inherit;";
@@ -51,7 +51,7 @@
     }
     toastEl.style.display = "block";
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => toastEl && (toastEl.style.display = "none"), action ? 8000 : 4000);
+    toastTimer = setTimeout(() => toastEl && (toastEl.style.display = "none"), actions.length ? 8000 : 4000);
   }
 
   // --- skipping --------------------------------------------------------------
@@ -63,15 +63,69 @@
     for (const s of segments) {
       if (undone.has(key(s)) || t < s.start || t >= s.end - 0.5) continue;
       video.currentTime = s.end;
-      toast(`Skipped ${s.category === "selfpromo" ? "self-promo" : "sponsor"} ${fmt(s.start)}–${fmt(s.end)}`, {
-        label: "Undo",
-        run: () => {
-          undone.add(key(s));
-          video.currentTime = s.start;
-        },
-      });
+      const undo = () => {
+        undone.add(key(s));
+        video.currentTime = s.start;
+      };
+      toast(`Skipped ${s.category === "selfpromo" ? "self-promo" : "sponsor"} ${fmt(s.start)}–${fmt(s.end)}`,
+        { label: "Undo", run: undo },
+        { label: "Not an ad", run: () => {
+          undo();
+          report("not-ad", s.start, s.end);
+        } });
     }
   }, 250);
+
+  // --- corrections: "I can hear a sponsor" while watching ----------------------
+  // A small button over the player. First click when a sponsor is playing that wasn't skipped,
+  // second click when the show is back. The pair goes to the program's corrections.jsonl, as raw
+  // click times (the first one trails the read by however long it took to reach the mouse).
+  let markFrom = null;
+  let markEl = null;
+  function report(kind, start, end) {
+    const correction = { videoId, kind, start, end, reader: result?.reader ?? null, source: result?.source ?? null,
+                         segments: (result?.segments ?? []).map(({ start, end, category }) => ({ start, end, category })) };
+    send({ type: "correct", correction }).then((r) => {
+      if (!r?.ok) toast(`SponsorSkip: couldn't save that (${r?.error ?? "no answer"})`);
+    });
+  }
+  function drawMark() {
+    const host = document.getElementById("movie_player");
+    // Hidden during YouTube's own ads: their Skip button sits in the same corner.
+    if (!host || !settings.enabled || !videoId || host.classList.contains("ad-showing")) return markEl && (markEl.style.display = "none");
+    if (!markEl || !host.contains(markEl)) {
+      markEl = document.createElement("button");
+      markEl.style.cssText =
+        "position:absolute;right:12px;bottom:64px;z-index:60;border:0;border-radius:6px;padding:5px 10px;cursor:pointer;font:13px/1.3 Roboto,Arial,sans-serif;opacity:.6;transition:opacity .15s;";
+      markEl.onmouseenter = () => (markEl.style.opacity = "1");
+      markEl.onmouseleave = () => (markEl.style.opacity = markFrom === null ? ".6" : "1");
+      markEl.onclick = (e) => {
+        e.stopPropagation();
+        const video = document.querySelector("video.html5-main-video") || document.querySelector("video");
+        if (!video) return;
+        const t = video.currentTime;
+        if (markFrom === null) {
+          markFrom = t;
+        } else {
+          const start = Math.min(markFrom, t), end = Math.max(markFrom, t);
+          markFrom = null;
+          if (end - start < 1) return drawMark(); // a double click, not a read
+          report("missed", start, end);
+          toast(`Marked ${fmt(start)}–${fmt(end)} as a sponsor. Thanks!`);
+        }
+        drawMark();
+      };
+      host.appendChild(markEl);
+    }
+    markEl.style.display = "block";
+    const marking = markFrom !== null;
+    markEl.textContent = marking ? `■ Show's back (sponsor from ${fmt(markFrom)})` : "+ Hearing a sponsor";
+    markEl.title = marking ? "Click when the sponsor is over" : "Click when you hear a sponsor that wasn't skipped, and again when the show is back";
+    markEl.style.background = marking ? "#e53935" : "rgba(0,0,0,.75)";
+    markEl.style.color = "#fff";
+    markEl.style.opacity = marking ? "1" : ".6";
+  }
+  setInterval(drawMark, 1000);
 
   // --- per video: SponsorBlock at once, then the chosen reader ----------------
   async function load(id, { fresh = false } = {}) {
@@ -80,6 +134,7 @@
     reading = null;
     segments = [];
     undone.clear();
+    markFrom = null;
     if (!fresh) {
       const quick = await send({ type: "quick", id });
       if (videoId !== id) return;

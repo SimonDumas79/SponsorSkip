@@ -108,6 +108,7 @@ api.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     aiGet: () => call("/ai-config", 10_000),
     aiSave: () => call("/ai-config", 10_000, msg.config),
     aiTest: () => call("/ai-test", 120_000, {}),
+    correct: () => call("/correction", 10_000, msg.correction),
     sbLookup: () => sbLookup(msg.id),
     sbSubmit: () => sbSubmit(msg),
   }[msg.type];

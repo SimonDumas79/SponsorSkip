@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "SponsorSkip",
-  "version": "0.10.1",
+  "version": "0.11.0",
   "description": "A mix of multiple small, directed models used to mark and skip sponsored content on YouTube.",
   "icons": {
     "16": "icons/16.png",

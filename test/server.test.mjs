@@ -118,3 +118,13 @@ test("/ai-ask needs the per-start token", async () => {
   const r = await request({ method: "POST", path: "/ai-ask", body: "{}", headers: { "content-type": "application/json" } });
   assert.equal(r.status, 403);
 });
+
+test("a correction is taken from the extension only, and only in its known shape", async () => {
+  const body = JSON.stringify({ videoId: "abc", kind: "missed", start: 10, end: 5 });
+  const headers = { "x-sponsorskip": "1", "content-type": "application/json" };
+  const page = await request({ method: "POST", path: "/correction", headers: { ...headers, origin: "https://www.youtube.com" }, body });
+  assert.equal(page.status, 403);
+  // Bad id, end before start: refused before anything is written.
+  const bad = await request({ method: "POST", path: "/correction", headers: { ...headers, origin: EXT }, body });
+  assert.equal(bad.status, 400);
+});

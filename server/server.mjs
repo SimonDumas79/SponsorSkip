@@ -346,6 +346,27 @@ function readBody(req, max = 1_000_000) {
     });
   });
 }
+/**
+ * A correction the person made while watching, kept in ./corrections.jsonl on this PC only (it is
+ * watch history, like the cache). "missed": they heard a sponsor that played; start and end are
+ * their two clicks, so the start trails the read's first word by their reaction time. "not-ad": a
+ * skip that cut show. The segments on screen at the time go with it, so a later script can tell a
+ * miss from an edge that ended too early. Only known fields are kept; anything else is refused.
+ */
+const CORRECTIONS = path.join(root, "corrections.jsonl");
+function correction(b) {
+  const num = (x) => typeof x === "number" && Number.isFinite(x) && x >= 0 && x < 86_400;
+  if (!VIDEO_ID.test(String(b.videoId)) || !["missed", "not-ad"].includes(b.kind)) return null;
+  if (!num(b.start) || !num(b.end) || b.end <= b.start || b.end - b.start > 1800) return null;
+  const segs = Array.isArray(b.segments) ? b.segments.slice(0, 50).filter((s) => num(s?.start) && num(s?.end)) : [];
+  return {
+    at: new Date().toISOString(), videoId: b.videoId, kind: b.kind, start: b.start, end: b.end,
+    reader: typeof b.reader === "string" ? b.reader.slice(0, 40) : null,
+    source: typeof b.source === "string" ? b.source.slice(0, 40) : null,
+    segments: segs.map((s) => ({ start: s.start, end: s.end, category: String(s.category ?? "").slice(0, 20) })),
+  };
+}
+
 async function post(req, res, url) {
   if (url.pathname === "/ai-ask") {
     if (req.headers["x-sponsorskip-token"] !== ASK_TOKEN) return send(res, 403, { error: "forbidden" });
@@ -363,6 +384,13 @@ async function post(req, res, url) {
     return send(res, 200, saved);
   }
   if (url.pathname === "/ai-test") return send(res, 200, await testAI());
+  if (url.pathname === "/correction") {
+    const c = correction(await readBody(req, 20_000));
+    if (!c) return send(res, 400, { error: "not a correction" });
+    fs.appendFileSync(CORRECTIONS, JSON.stringify(c) + "\n");
+    log(c.videoId, "correction", c.kind, `${c.start.toFixed(1)}-${c.end.toFixed(1)}`);
+    return send(res, 200, { ok: true });
+  }
   return send(res, 404, { error: "not found" });
 }
 
