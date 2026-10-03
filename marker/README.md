@@ -1212,3 +1212,26 @@ ran past 150 s (154 s); holdout 5's runaway ends (up to 575 s) did not recur. So
 180 or 240 s, flat or "only when the resume quote was not found"; at 120 s both cost 1.2-1.3 points of ad
 time for 0.1 s. The worst video (117 s lost) is a false find, not a long end. Verdict: a cap is at most a
 safety net; the unconfirmed-180 s rule is the one that cannot hurt a real read here. Holdout 6 decides.
+
+### Soft lead-ins left out of the score (2026-10-03, `lead_in_grade.py`, zero spend)
+
+Simon's point: SponsorBlock often starts a segment at the soft lead-in, where the show is still its own
+content but segueing toward the sponsor. A marker can't be expected to catch that, and nobody minds
+hearing it. Claude's blind edge placements (`data/edge_verify.jsonl`) mark it: where SponsorBlock
+starts earlier than Claude, the lines between are the soft lead-in. On the 160 v3 CV videos (210 of
+226 reads placed by Claude) that is 595 s; v3 leaves 508 s of it playing already.
+
+| system | standard | soft lead-in neutral | every start disagreement neutral |
+|---|---|---|---|
+| v3, B = 10 | 64.6% @ 7.1 s | 67.1% @ 7.1 s | 67.2% @ 6.5 s |
+| J, B = 10 | 67.3% @ 6.3 s | 69.6% @ 6.3 s | 69.8% @ 5.7 s |
+| v3, B = 5 | 60.7% @ 4.9 s | 63.2% @ 4.9 s | 63.3% @ 4.3 s |
+| J, B = 5 | 61.3% @ 3.2 s | 63.6% @ 3.2 s | 63.7% @ 2.8 s |
+
+About 2.5 points of the "missed" ad time was soft lead-in, the same for every system, so the ranking
+doesn't move. The rest of the gap is whole reads missed and ends cut short, not lead-ins.
+
+**Watching corrections (0.11.0).** A "+ Hearing a sponsor" button over the player takes two clicks
+(sponsor heard, show back) and the skip toast has "Not an ad"; both append to `corrections.jsonl` at
+the repo root (gitignored, it is watch history). The first click trails the read by reaction time, so
+the click marks the real read, never the soft lead-in.
